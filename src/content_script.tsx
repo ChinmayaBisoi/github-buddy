@@ -282,14 +282,21 @@ function processStatusBadges() {
     if (el.hasAttribute(STATUS_BADGE_ATTR)) return;
     const text = el.textContent ?? "";
     const style = match(text);
-    if (!style) return;
+    if (!style || !style.color) return;
     const hasMatchingChild = Array.from(el.querySelectorAll("span, div, a, li")).some(
       (c) => c !== el && match(c.textContent ?? "")
     );
     if (hasMatchingChild) return;
 
     el.setAttribute(STATUS_BADGE_ATTR, "true");
-    Object.assign((el as HTMLElement).style, style);
+    const color = style.color as string;
+    const htmlEl = el as HTMLElement;
+    htmlEl.style.setProperty("color", color, "important");
+    if (style.fontSize) htmlEl.style.fontSize = style.fontSize as string;
+    if (style.fontWeight) htmlEl.style.fontWeight = style.fontWeight as string;
+    el.querySelectorAll("span, div, a, p").forEach((desc) => {
+      (desc as HTMLElement).style.setProperty("color", color, "important");
+    });
   };
 
   rows.forEach((row) => {
@@ -349,15 +356,23 @@ function processDetailPage() {
   target.appendChild(container);
 }
 
+function isListReady(): boolean {
+  const links = document.querySelectorAll<HTMLAnchorElement>(
+    'a[href*="/issues/"], a[href*="/pull/"]'
+  );
+  return Array.from(links).some(
+    (a) => isIssueOrPrUrl(a.href)
+  );
+}
+
 function run() {
   if (isDetailPage(window.location.pathname)) {
     processDetailPage();
   } else {
+    if (!isListReady()) return;
     processListPage();
   }
 }
-
-run();
 
 let debounceTimer: ReturnType<typeof setTimeout>;
 const observer = new MutationObserver(() => {
@@ -369,3 +384,5 @@ observer.observe(document.body, {
   childList: true,
   subtree: true,
 });
+
+run();
