@@ -20,7 +20,7 @@ PR review statuses are shown as colored text (no background):
 | Status | Color |
 |--------|-------|
 | Approved | Green (#1a7f37) |
-| Review required | Muted gray (#57606a) |
+| Review required | Cyan (#22d3ee) |
 | Changes requested | Red (#cf222e) |
 
 Copy actions work on both issues and pull requests. Status badges appear on the PR list.

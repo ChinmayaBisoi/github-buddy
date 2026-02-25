@@ -8,6 +8,7 @@ import {
   isIssueOrPrUrl,
   buildDetailTitle,
   matchStatusBadge,
+  STATUS_STYLES,
 } from "./utils";
 
 const COPY_BUTTON_ATTR = "data-github-buddy-copy";
@@ -264,30 +265,12 @@ function injectListToolbar() {
   }
 }
 
-const STATUS_STYLES: Record<string, React.CSSProperties> = {
-  approved: {
-    color: "#1a7f37",
-    fontSize: "11px",
-    fontWeight: 600,
-  },
-  "review-required": {
-    color: "#22d3ee",
-    fontSize: "11px",
-    fontWeight: 600,
-  },
-  "changes-requested": {
-    color: "#cf222e",
-    fontSize: "11px",
-    fontWeight: 600,
-  },
-};
-
 function processStatusBadges() {
   const rows = document.querySelectorAll(
     "div.Box-row, [data-testid='issue-row'], tr.js-navigation-item, li.js-issue-row"
   );
 
-  const match = (text: string): React.CSSProperties | null => {
+  const match = (text: string) => {
     const type = matchStatusBadge(text);
     return type ? STATUS_STYLES[type] : null;
   };
@@ -307,7 +290,7 @@ function processStatusBadges() {
     const htmlEl = el as HTMLElement;
     htmlEl.style.setProperty("color", color, "important");
     if (style.fontSize) htmlEl.style.fontSize = style.fontSize as string;
-    if (style.fontWeight) htmlEl.style.fontWeight = style.fontWeight as string;
+    if (style.fontWeight) htmlEl.style.setProperty("font-weight", style.fontWeight);
     el.querySelectorAll("span, div, a, p").forEach((desc) => {
       (desc as HTMLElement).style.setProperty("color", color, "important");
     });

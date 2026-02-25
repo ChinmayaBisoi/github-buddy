@@ -5,6 +5,7 @@ import {
   formatCopyPayloadMultiple,
   buildDetailTitle,
   matchStatusBadge,
+  STATUS_STYLES,
 } from "../utils";
 
 describe("isDetailPage", () => {
@@ -131,5 +132,17 @@ describe("matchStatusBadge", () => {
     expect(matchStatusBadge("Open")).toBe(null);
     expect(matchStatusBadge("2 approved reviews")).toBe(null);
     expect(matchStatusBadge("Something else")).toBe(null);
+  });
+});
+
+describe("STATUS_STYLES", () => {
+  it("defines colors for all badge types", () => {
+    expect(STATUS_STYLES.approved.color).toBe("#1a7f37");
+    expect(STATUS_STYLES["review-required"].color).toBe("#22d3ee");
+    expect(STATUS_STYLES["changes-requested"].color).toBe("#cf222e");
+  });
+
+  it("review-required uses cyan", () => {
+    expect(STATUS_STYLES["review-required"].color).toBe("#22d3ee");
   });
 });
