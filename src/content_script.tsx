@@ -211,7 +211,7 @@ const ListToolbar = React.memo(function ListToolbar() {
         title="Copy all visible issues/PRs on this page"
       >
         <Copy size={10} strokeWidth={2} />
-        Copy All
+        Copy All (Current Page)
       </button>
       {status === "copied" && (
         <span style={toolbarStatusStyles.copied}>Copied!</span>
@@ -232,35 +232,44 @@ function injectListToolbar() {
   toolbar.style.alignItems = "center";
   toolbar.style.gap = "8px";
   toolbar.style.marginLeft = "12px";
+  toolbar.style.flexShrink = "0";
 
   const root = createRoot(toolbar);
   root.render(<ListToolbar />);
 
-  const openLink = document.querySelector<HTMLElement>(
-    'a[href*="state=open"], a[href*="is%3Aopen"], [data-state="open"]'
-  );
   const closedLink = document.querySelector<HTMLElement>(
-    'a[href*="state=closed"], a[href*="is%3Aclosed"], [data-state="closed"]'
+    'a[href*="state=closed"], a[href*="is%3Aclosed"], a[href*="is:closed"]'
   );
-  const stateFilter =
-    openLink?.closest("nav") ??
-    openLink?.parentElement ??
-    closedLink?.closest("nav") ??
-    closedLink?.parentElement ??
-    document.querySelector(".UnderlineNav-body") ??
-    document.querySelector('[role="tablist"]') ??
-    document.querySelector(".table-list-header, .subnav") ??
-    document.querySelector('[data-testid="issue-list-filters"]');
+  const openLink = document.querySelector<HTMLElement>(
+    'a[href*="state=open"], a[href*="is%3Aopen"], a[href*="is:open"]'
+  );
+  const insertAfter =
+    closedLink ?? openLink ?? document.querySelector('nav a[href*="state="]');
 
-  if (stateFilter) {
-    stateFilter.appendChild(toolbar);
+  if (insertAfter?.parentElement) {
+    const parent = insertAfter.parentElement;
+    const next = insertAfter.nextElementSibling;
+    if (next) {
+      parent.insertBefore(toolbar, next);
+    } else {
+      parent.appendChild(toolbar);
+    }
   } else {
-    const repoContent = document.querySelector("#repo-content-pjax-container");
-    if (repoContent) {
-      const wrapper = document.createElement("div");
-      wrapper.style.marginBottom = "12px";
-      wrapper.appendChild(toolbar);
-      repoContent.insertBefore(wrapper, repoContent.firstChild);
+    const stateFilter =
+      document.querySelector(".UnderlineNav-body") ??
+      document.querySelector('[role="tablist"]') ??
+      document.querySelector(".table-list-header, .subnav") ??
+      document.querySelector('[data-testid="issue-list-filters"]');
+    if (stateFilter) {
+      stateFilter.appendChild(toolbar);
+    } else {
+      const repoContent = document.querySelector("#repo-content-pjax-container");
+      if (repoContent) {
+        const wrapper = document.createElement("div");
+        wrapper.style.marginBottom = "12px";
+        wrapper.appendChild(toolbar);
+        repoContent.insertBefore(wrapper, repoContent.firstChild);
+      }
     }
   }
 }
