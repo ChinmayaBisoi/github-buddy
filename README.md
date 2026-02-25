@@ -15,13 +15,13 @@ Copy All and Copy Selected appear in the table header beside the Open/Closed fil
 
 ### Status badges (PR only)
 
-PR review statuses are styled as pill badges:
+PR review statuses are shown as colored text (no background):
 
-| Status | Style |
+| Status | Color |
 |--------|-------|
-| Approved | Green background |
-| Review required | Off-white background |
-| Changes requested | Red background |
+| Approved | Green (#1a7f37) |
+| Review required | Muted gray (#57606a) |
+| Changes requested | Red (#cf222e) |
 
 Copy actions work on both issues and pull requests. Status badges appear on the PR list.
 

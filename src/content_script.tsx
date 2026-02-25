@@ -252,28 +252,19 @@ function injectListToolbar() {
 
 const STATUS_STYLES: Record<string, React.CSSProperties> = {
   approved: {
-    background: "#238636",
-    color: "#fff",
-    padding: "2px 8px",
-    borderRadius: "9999px",
+    color: "#1a7f37",
     fontSize: "11px",
-    fontWeight: 500,
+    fontWeight: 600,
   },
   "review-required": {
-    background: "#f6f8fa",
     color: "#57606a",
-    padding: "2px 8px",
-    borderRadius: "9999px",
     fontSize: "11px",
-    fontWeight: 500,
+    fontWeight: 600,
   },
   "changes-requested": {
-    background: "#f85149",
-    color: "#fff",
-    padding: "2px 8px",
-    borderRadius: "9999px",
+    color: "#cf222e",
     fontSize: "11px",
-    fontWeight: 500,
+    fontWeight: 600,
   },
 };
 
