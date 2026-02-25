@@ -4,6 +4,7 @@ import {
   formatCopyPayload,
   formatCopyPayloadMultiple,
   buildDetailTitle,
+  matchStatusBadge,
 } from "../utils";
 
 describe("isDetailPage", () => {
@@ -103,5 +104,32 @@ describe("buildDetailTitle", () => {
 
   it("returns trimmed title when no issue number in URL", () => {
     expect(buildDetailTitle("  Title  ", "https://github.com/a/b/issues")).toBe("Title");
+  });
+});
+
+describe("matchStatusBadge", () => {
+  it("returns approved for Approved variants", () => {
+    expect(matchStatusBadge("Approved")).toBe("approved");
+    expect(matchStatusBadge("• Approved")).toBe("approved");
+    expect(matchStatusBadge("  Approved  ")).toBe("approved");
+  });
+
+  it("returns review-required for Review required variants", () => {
+    expect(matchStatusBadge("Review required")).toBe("review-required");
+    expect(matchStatusBadge("• Review required")).toBe("review-required");
+  });
+
+  it("returns changes-requested for Changes requested variants", () => {
+    expect(matchStatusBadge("Changes requested")).toBe("changes-requested");
+    expect(matchStatusBadge("• Changes requested")).toBe("changes-requested");
+    expect(matchStatusBadge("Requested Changes")).toBe("changes-requested");
+    expect(matchStatusBadge("• Requested Changes")).toBe("changes-requested");
+  });
+
+  it("returns null for non-matching text", () => {
+    expect(matchStatusBadge("")).toBe(null);
+    expect(matchStatusBadge("Open")).toBe(null);
+    expect(matchStatusBadge("2 approved reviews")).toBe(null);
+    expect(matchStatusBadge("Something else")).toBe(null);
   });
 });

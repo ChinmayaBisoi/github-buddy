@@ -7,25 +7,28 @@ import {
   isDetailPage,
   isIssueOrPrUrl,
   buildDetailTitle,
+  matchStatusBadge,
 } from "./utils";
 
 const COPY_BUTTON_ATTR = "data-github-buddy-copy";
 const TOOLBAR_ATTR = "data-github-buddy-toolbar";
+const STATUS_BADGE_ATTR = "data-github-buddy-status";
 
 const buttonBaseStyle: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  gap: "4px",
-  padding: "4px 8px",
+  gap: "3px",
+  padding: "2px 6px",
   marginLeft: "6px",
   background: "#238636",
   border: "none",
   borderRadius: "2px",
   cursor: "pointer",
   color: "#fff",
-  fontSize: "12px",
+  fontSize: "11px",
   fontWeight: 500,
+  lineHeight: 1.2,
   verticalAlign: "middle",
 };
 
@@ -75,7 +78,7 @@ function CopyButton({
         e.currentTarget.style.background = copied ? "#2ea043" : "#238636";
       }}
     >
-      <Copy size={12} strokeWidth={2} />
+      <Copy size={10} strokeWidth={2} />
       <span>Copy</span>
     </button>
   );
@@ -179,7 +182,7 @@ function ListToolbar() {
         style={buttonBaseStyle}
         title="Copy selected issues/PRs"
       >
-        <Copy size={12} strokeWidth={2} />
+        <Copy size={10} strokeWidth={2} />
         Copy Selected
       </button>
       <button
@@ -188,7 +191,7 @@ function ListToolbar() {
         style={buttonBaseStyle}
         title="Copy all visible issues/PRs on this page"
       >
-        <Copy size={12} strokeWidth={2} />
+        <Copy size={10} strokeWidth={2} />
         Copy All
       </button>
       {status === "copied" && (
@@ -212,17 +215,30 @@ function injectListToolbar() {
   toolbar.setAttribute(TOOLBAR_ATTR, "true");
   toolbar.style.display = "inline-flex";
   toolbar.style.alignItems = "center";
+  toolbar.style.gap = "8px";
+  toolbar.style.marginLeft = "12px";
 
   const root = createRoot(toolbar);
   root.render(<ListToolbar />);
 
-  const target =
-    document.querySelector(".table-list-header, .issues-list-actions, .subnav") ??
-    document.querySelector('[data-testid="issue-list-filters"]') ??
-    document.querySelector(".d-flex.flex-wrap.gap-2") ??
-    document.querySelector(".flex-wrap.items-center");
-  if (target) {
-    target.appendChild(toolbar);
+  const openLink = document.querySelector<HTMLElement>(
+    'a[href*="state=open"], a[href*="is%3Aopen"], [data-state="open"]'
+  );
+  const closedLink = document.querySelector<HTMLElement>(
+    'a[href*="state=closed"], a[href*="is%3Aclosed"], [data-state="closed"]'
+  );
+  const stateFilter =
+    openLink?.closest("nav") ??
+    openLink?.parentElement ??
+    closedLink?.closest("nav") ??
+    closedLink?.parentElement ??
+    document.querySelector(".UnderlineNav-body") ??
+    document.querySelector('[role="tablist"]') ??
+    document.querySelector(".table-list-header, .subnav") ??
+    document.querySelector('[data-testid="issue-list-filters"]');
+
+  if (stateFilter) {
+    stateFilter.appendChild(toolbar);
   } else {
     const repoContent = document.querySelector("#repo-content-pjax-container");
     if (repoContent) {
@@ -232,6 +248,65 @@ function injectListToolbar() {
       repoContent.insertBefore(wrapper, repoContent.firstChild);
     }
   }
+}
+
+const STATUS_STYLES: Record<string, React.CSSProperties> = {
+  approved: {
+    background: "#238636",
+    color: "#fff",
+    padding: "2px 8px",
+    borderRadius: "9999px",
+    fontSize: "11px",
+    fontWeight: 500,
+  },
+  "review-required": {
+    background: "#f6f8fa",
+    color: "#57606a",
+    padding: "2px 8px",
+    borderRadius: "9999px",
+    fontSize: "11px",
+    fontWeight: 500,
+  },
+  "changes-requested": {
+    background: "#f85149",
+    color: "#fff",
+    padding: "2px 8px",
+    borderRadius: "9999px",
+    fontSize: "11px",
+    fontWeight: 500,
+  },
+};
+
+function processStatusBadges() {
+  const rows = document.querySelectorAll(
+    "div.Box-row, [data-testid='issue-row'], tr.js-navigation-item, li.js-issue-row"
+  );
+
+  const match = (text: string): React.CSSProperties | null => {
+    const type = matchStatusBadge(text);
+    return type ? STATUS_STYLES[type] : null;
+  };
+
+  const process = (el: Element) => {
+    if (el.hasAttribute(STATUS_BADGE_ATTR)) return;
+    const text = el.textContent ?? "";
+    const style = match(text);
+    if (!style) return;
+    const hasMatchingChild = Array.from(el.querySelectorAll("span, div, a, li")).some(
+      (c) => c !== el && match(c.textContent ?? "")
+    );
+    if (hasMatchingChild) return;
+
+    el.setAttribute(STATUS_BADGE_ATTR, "true");
+    Object.assign((el as HTMLElement).style, style);
+  };
+
+  rows.forEach((row) => {
+    const candidates = Array.from(row.querySelectorAll("span, div, a, li")).sort(
+      (a, b) => (a.querySelectorAll("*").length ?? 0) - (b.querySelectorAll("*").length ?? 0)
+    );
+    candidates.forEach(process);
+  });
 }
 
 function processListPage() {
@@ -250,6 +325,7 @@ function processListPage() {
   });
 
   injectListToolbar();
+  processStatusBadges();
 }
 
 function processDetailPage() {

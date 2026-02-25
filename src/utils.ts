@@ -21,3 +21,20 @@ export function buildDetailTitle(titleText: string, url: string): string {
   const trimmed = titleText.trim();
   return trimmed.includes("#") ? trimmed : `${trimmed}${issueNum ? ` #${issueNum}` : ""}`;
 }
+
+export type StatusBadgeType = "approved" | "review-required" | "changes-requested";
+
+/** Returns the status badge type if the text matches a PR review status. */
+export function matchStatusBadge(text: string): StatusBadgeType | null {
+  const t = text.trim();
+  if (t === "Approved" || t === "• Approved") return "approved";
+  if (t === "Review required" || t === "• Review required") return "review-required";
+  if (
+    t === "Changes requested" ||
+    t === "• Changes requested" ||
+    t === "Requested Changes" ||
+    t === "• Requested Changes"
+  )
+    return "changes-requested";
+  return null;
+}

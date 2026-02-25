@@ -1,14 +1,29 @@
 # GitHub Buddy
 
-Chrome extension that adds a copy button to GitHub issues and pull requests. Click to copy the full title (with issue/PR number) and URL in one action.
+Chrome extension that adds copy buttons and status badges to GitHub issues and pull requests. Click to copy the full title (with issue/PR number) and URL in one action.
 
 ## Features
 
-- **Issues list** (`/owner/repo/issues`): Green Copy button next to each issue title
-- **Pull requests list** (`/owner/repo/pulls`): Green Copy button next to each PR title
+### Copy actions
+
+- **Per-row Copy button**: Green compact button next to each issue/PR title in list views
 - **Issue/PR detail page**: Copy button next to the page title
 - **Copy Selected**: Copy all checked issues/PRs (use row checkboxes to select)
 - **Copy All**: Copy all visible issues/PRs on the current page
+
+Copy All and Copy Selected appear in the table header beside the Open/Closed filter tabs.
+
+### Status badges (PR only)
+
+PR review statuses are styled as pill badges:
+
+| Status | Style |
+|--------|-------|
+| Approved | Green background |
+| Review required | Off-white background |
+| Changes requested | Red background |
+
+Copy actions work on both issues and pull requests. Status badges appear on the PR list.
 
 Copied format (single):
 ```
