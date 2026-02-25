@@ -136,13 +136,26 @@ describe("matchStatusBadge", () => {
 });
 
 describe("STATUS_STYLES", () => {
+  const badgeTypes = ["approved", "review-required", "changes-requested"] as const;
+
   it("defines colors for all badge types", () => {
     expect(STATUS_STYLES.approved.color).toBe("#1a7f37");
     expect(STATUS_STYLES["review-required"].color).toBe("#eab308");
     expect(STATUS_STYLES["changes-requested"].color).toBe("#cf222e");
   });
 
-  it("review-required uses yellow", () => {
-    expect(STATUS_STYLES["review-required"].color).toBe("#eab308");
+  it("each badge type has color, fontSize, and fontWeight", () => {
+    badgeTypes.forEach((type) => {
+      expect(STATUS_STYLES[type]).toHaveProperty("color");
+      expect(STATUS_STYLES[type]).toHaveProperty("fontSize");
+      expect(STATUS_STYLES[type]).toHaveProperty("fontWeight");
+      expect(typeof STATUS_STYLES[type].color).toBe("string");
+      expect(STATUS_STYLES[type].fontSize).toBe("11px");
+      expect(STATUS_STYLES[type].fontWeight).toBe("600");
+    });
+  });
+
+  it("has no extra or missing keys", () => {
+    expect(Object.keys(STATUS_STYLES).sort()).toEqual([...badgeTypes].sort());
   });
 });

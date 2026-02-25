@@ -14,6 +14,136 @@ import {
 const COPY_BUTTON_ATTR = "data-github-buddy-copy";
 const TOOLBAR_ATTR = "data-github-buddy-toolbar";
 const STATUS_BADGE_ATTR = "data-github-buddy-status";
+const TOAST_ATTR = "data-github-buddy-toast";
+
+const ISSUE_PR_LINKS = 'a[href*="/issues/"], a[href*="/pull/"]';
+const ROW_SELECTOR = "div.Box-row, [data-testid='issue-row'], tr, li";
+const DEBOUNCE_MS = 300;
+
+const buttonStyle =
+  "display:inline-flex;align-items:center;gap:3px;padding:2px 6px;margin-left:6px;background:#238636;border:none;border-radius:2px;cursor:pointer;color:#fff;font-size:11px;font-weight:500;line-height:1.2";
+
+const COPY_ICON =
+  '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+
+function copyToClipboard(text: string): Promise<void> {
+  return navigator.clipboard.writeText(text);
+}
+
+function showToast(message: string, duration = 1500) {
+  const existing = document.querySelector(`[${TOAST_ATTR}]`);
+  if (existing) existing.remove();
+
+  const toast = document.createElement("div");
+  toast.setAttribute(TOAST_ATTR, "true");
+  toast.textContent = message;
+  toast.style.cssText = `
+    position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+    padding:8px 16px;background:var(--color-canvas-default,#fff);
+    color:var(--color-fg-default,#24292f);
+    font-size:13px;font-weight:500;border-radius:6px;
+    box-shadow:0 4px 12px rgba(0,0,0,.15);
+    z-index:999999;opacity:0;transition:opacity .2s ease;
+    border:1px solid var(--color-border-default,#d0d7de);
+  `;
+  document.body.appendChild(toast);
+  requestAnimationFrame(() => {
+    toast.style.opacity = "1";
+  });
+  setTimeout(() => {
+    toast.style.opacity = "0";
+    setTimeout(() => toast.remove(), 200);
+  }, duration);
+}
+
+function createVanillaCopyButton(title: string, url: string): HTMLButtonElement {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.setAttribute("aria-label", "Copy issue/PR name and URL");
+  btn.title = "Copy name and URL";
+  btn.style.cssText = buttonStyle;
+  btn.innerHTML = COPY_ICON + '<span>Copy</span>';
+
+  let copyTimeout: ReturnType<typeof setTimeout> | undefined;
+  btn.addEventListener("click", async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      await copyToClipboard(formatCopyPayload(title, url));
+      showToast("Copied!");
+      btn.style.background = "#2ea043";
+      copyTimeout = setTimeout(() => {
+        btn.style.background = "#238636";
+        copyTimeout = undefined;
+      }, 1500);
+    } catch (err) {
+      console.error("GitHub Buddy: Copy failed", err);
+    }
+  });
+  btn.addEventListener("mouseenter", () => {
+    if (!copyTimeout) btn.style.background = "#2ea043";
+  });
+  btn.addEventListener("mouseleave", () => {
+    if (!copyTimeout) btn.style.background = "#238636";
+  });
+
+  return btn;
+}
+
+function injectCopyButton(link: HTMLAnchorElement, href: string, title: string) {
+  const row =
+    link.closest("div.Box-row") ??
+    link.closest('[data-testid="issue-row"]') ??
+    link.closest("tr") ??
+    link.closest("li");
+  if (row?.querySelector(`[${COPY_BUTTON_ATTR}][data-url="${href}"]`)) return;
+
+  const container = document.createElement("span");
+  container.setAttribute(COPY_BUTTON_ATTR, "true");
+  container.setAttribute("data-url", href);
+  container.style.cssText = "display:inline-flex;align-items:center";
+  container.appendChild(createVanillaCopyButton(title, href));
+  link.parentNode?.insertBefore(container, link.nextSibling);
+}
+
+type IssuePrItem = { title: string; url: string };
+
+function getIssuePrItems(): IssuePrItem[] {
+  const links = document.querySelectorAll<HTMLAnchorElement>(ISSUE_PR_LINKS);
+  const seen = new Set<string>();
+  const items: IssuePrItem[] = [];
+  for (let i = 0; i < links.length; i++) {
+    const href = links[i].href;
+    if (!isIssueOrPrUrl(href) || seen.has(href)) continue;
+    seen.add(href);
+    const title = links[i].textContent?.trim() ?? "";
+    if (title) items.push({ title, url: href });
+  }
+  return items;
+}
+
+function getSelectedItems(): IssuePrItem[] {
+  const checked = document.querySelectorAll<HTMLInputElement>(
+    'input[type="checkbox"]:checked'
+  );
+  const items: IssuePrItem[] = [];
+  const seen = new Set<string>();
+  for (let i = 0; i < checked.length; i++) {
+    const cb = checked[i];
+    const row =
+      cb.closest("div.Box-row") ??
+      cb.closest('[data-testid="issue-row"]') ??
+      cb.closest("tr") ??
+      cb.closest("li");
+    if (!row) continue;
+    const link = row.querySelector<HTMLAnchorElement>(ISSUE_PR_LINKS);
+    if (!link || !isIssueOrPrUrl(link.href) || seen.has(link.href)) continue;
+    seen.add(link.href);
+    const title = link.textContent?.trim() ?? "";
+    if (title) items.push({ title, url: link.href });
+  }
+  return items;
+}
 
 const buttonBaseStyle: React.CSSProperties = {
   display: "inline-flex",
@@ -30,38 +160,200 @@ const buttonBaseStyle: React.CSSProperties = {
   fontSize: "11px",
   fontWeight: 500,
   lineHeight: 1.2,
-  verticalAlign: "middle",
 };
 
-function copyToClipboard(text: string): Promise<void> {
-  return navigator.clipboard.writeText(text);
+const ListToolbar = React.memo(function ListToolbar() {
+  const [status, setStatus] = React.useState<"idle" | "copied" | "error">("idle");
+  const timeoutRef = React.useRef<ReturnType<typeof setTimeout>>();
+
+  const handleCopy = React.useCallback(async (items: IssuePrItem[]) => {
+    clearTimeout(timeoutRef.current);
+    if (items.length === 0) {
+      showToast("Nothing to copy");
+      setStatus("error");
+      timeoutRef.current = setTimeout(() => setStatus("idle"), 2000);
+      return;
+    }
+    try {
+      await copyToClipboard(formatCopyPayloadMultiple(items));
+      showToast("Copied!");
+      setStatus("copied");
+      timeoutRef.current = setTimeout(() => setStatus("idle"), 1500);
+    } catch (err) {
+      console.error("GitHub Buddy: Copy failed", err);
+      setStatus("error");
+      timeoutRef.current = setTimeout(() => setStatus("idle"), 2000);
+    }
+  }, []);
+
+  React.useEffect(() => () => clearTimeout(timeoutRef.current), []);
+
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+      <button
+        type="button"
+        onClick={() => handleCopy(getSelectedItems())}
+        style={buttonBaseStyle}
+        title="Copy selected issues/PRs"
+      >
+        <Copy size={10} strokeWidth={2} />
+        Copy Selected
+      </button>
+      <button
+        type="button"
+        onClick={() => handleCopy(getIssuePrItems())}
+        style={buttonBaseStyle}
+        title="Copy all visible issues/PRs on this page"
+      >
+        <Copy size={10} strokeWidth={2} />
+        Copy All (Current Page)
+      </button>
+      {status === "copied" && (
+        <span style={{ marginLeft: "6px", color: "#3fb950", fontSize: "12px" }}>
+          Copied!
+        </span>
+      )}
+      {status === "error" && (
+        <span style={{ marginLeft: "6px", color: "#f85149", fontSize: "12px" }}>
+          Nothing to copy
+        </span>
+      )}
+    </span>
+  );
+});
+
+function injectListToolbar() {
+  if (document.querySelector(`[${TOOLBAR_ATTR}]`)) return;
+
+  const toolbar = document.createElement("span");
+  toolbar.setAttribute(TOOLBAR_ATTR, "true");
+  toolbar.style.cssText =
+    "display:inline-flex;align-items:center;gap:8px;margin-left:12px;flex-shrink:0";
+
+  const root = createRoot(toolbar);
+  root.render(<ListToolbar />);
+
+  const insertAfter =
+    document.querySelector<HTMLElement>(
+      'a[href*="state=closed"], a[href*="is%3Aclosed"], a[href*="is:closed"]'
+    ) ??
+    document.querySelector<HTMLElement>(
+      'a[href*="state=open"], a[href*="is%3Aopen"], a[href*="is:open"]'
+    ) ??
+    document.querySelector('nav a[href*="state="]');
+
+  if (insertAfter?.parentElement) {
+    const next = insertAfter.nextElementSibling;
+    insertAfter.parentElement.insertBefore(
+      toolbar,
+      next
+    );
+  } else {
+    const stateFilter =
+      document.querySelector(".UnderlineNav-body") ??
+      document.querySelector('[role="tablist"]') ??
+      document.querySelector(".table-list-header, .subnav") ??
+      document.querySelector('[data-testid="issue-list-filters"]');
+    if (stateFilter) {
+      stateFilter.appendChild(toolbar);
+    } else {
+      const repoContent = document.querySelector("#repo-content-pjax-container");
+      if (repoContent) {
+        const wrapper = document.createElement("div");
+        wrapper.style.marginBottom = "12px";
+        wrapper.appendChild(toolbar);
+        repoContent.insertBefore(wrapper, repoContent.firstChild);
+      }
+    }
+  }
+}
+
+function processStatusBadges() {
+  const rows = document.querySelectorAll(ROW_SELECTOR);
+  for (let r = 0; r < rows.length; r++) {
+    const candidates = rows[r].querySelectorAll("span, div, a");
+    const arr: Element[] = [];
+    for (let i = 0; i < candidates.length; i++) arr.push(candidates[i]);
+    arr.sort((a, b) => a.children.length - b.children.length);
+
+    for (let i = 0; i < arr.length; i++) {
+      const el = arr[i];
+      if (el.hasAttribute(STATUS_BADGE_ATTR)) continue;
+      const type = matchStatusBadge(el.textContent ?? "");
+      if (!type) continue;
+      const style = STATUS_STYLES[type];
+      if (!style?.color) continue;
+      const children = el.querySelectorAll("span, div, a, li");
+      let hasChild = false;
+      for (let c = 0; c < children.length; c++) {
+        if (children[c] !== el && matchStatusBadge(children[c].textContent ?? "")) {
+          hasChild = true;
+          break;
+        }
+      }
+      if (hasChild) continue;
+
+      el.setAttribute(STATUS_BADGE_ATTR, "true");
+      const color = style.color;
+      (el as HTMLElement).style.setProperty("color", color, "important");
+      if (style.fontSize) (el as HTMLElement).style.fontSize = style.fontSize;
+      if (style.fontWeight)
+        (el as HTMLElement).style.setProperty("font-weight", style.fontWeight);
+      const desc = el.querySelectorAll("span, div, a, p");
+      for (let d = 0; d < desc.length; d++) {
+        (desc[d] as HTMLElement).style.setProperty("color", color, "important");
+      }
+    }
+  }
+}
+
+function processListPage(links: NodeListOf<HTMLAnchorElement>) {
+  const processed = new Set<string>();
+  let hasValid = false;
+
+  for (let i = 0; i < links.length; i++) {
+    const link = links[i];
+    const href = link.href;
+    if (!isIssueOrPrUrl(href)) continue;
+    hasValid = true;
+    if (processed.has(href)) continue;
+    processed.add(href);
+    const title = link.textContent?.trim() ?? "";
+    if (!title) continue;
+    injectCopyButton(link, href, title);
+  }
+
+  if (!hasValid) return;
+
+  injectListToolbar();
+  processStatusBadges();
 }
 
 const CopyButton = React.memo(function CopyButton({
   title,
   url,
-  onCopied,
 }: {
   title: string;
   url: string;
-  onCopied: () => void;
 }) {
   const [copied, setCopied] = React.useState(false);
   const timeoutRef = React.useRef<ReturnType<typeof setTimeout>>();
 
-  const handleClick = React.useCallback(async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const text = formatCopyPayload(title, url);
-    try {
-      await copyToClipboard(text);
-      setCopied(true);
-      onCopied();
-      timeoutRef.current = setTimeout(() => setCopied(false), 1500);
-    } catch (err) {
-      console.error("GitHub Buddy: Copy failed", err);
-    }
-  }, [title, url, onCopied]);
+  const handleClick = React.useCallback(
+    async (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      try {
+        await copyToClipboard(formatCopyPayload(title, url));
+        showToast("Copied!");
+        setCopied(true);
+        timeoutRef.current = setTimeout(() => setCopied(false), 1500);
+      } catch (err) {
+        console.error("GitHub Buddy: Copy failed", err);
+      }
+    },
+    [title, url]
+  );
 
   React.useEffect(() => () => clearTimeout(timeoutRef.current), []);
 
@@ -88,257 +380,12 @@ const CopyButton = React.memo(function CopyButton({
   );
 });
 
-function injectCopyButton(link: HTMLAnchorElement) {
-  const href = link.href;
-  if (!isIssueOrPrUrl(href)) return;
-
-  const title = link.textContent?.trim() ?? "";
-  if (!title) return;
-
-  const row =
-    link.closest("div.Box-row") ??
-    link.closest('[data-testid="issue-row"]') ??
-    link.closest("tr") ??
-    link.closest("li");
-  if (row?.querySelector(`[${COPY_BUTTON_ATTR}][data-url="${href}"]`)) return;
-
-  const container = document.createElement("span");
-  container.setAttribute(COPY_BUTTON_ATTR, "true");
-  container.setAttribute("data-url", href);
-  container.style.display = "inline-flex";
-  container.style.alignItems = "center";
-
-  const root = createRoot(container);
-  root.render(
-    <CopyButton title={title} url={href} onCopied={() => {}} />
-  );
-
-  link.parentNode?.insertBefore(container, link.nextSibling);
-}
-
-type IssuePrItem = { title: string; url: string };
-
-function getIssuePrItems(): IssuePrItem[] {
-  const links = document.querySelectorAll<HTMLAnchorElement>(
-    'a[href*="/issues/"], a[href*="/pull/"]'
-  );
-  const seen = new Set<string>();
-  const items: IssuePrItem[] = [];
-  links.forEach((link) => {
-    const href = link.href;
-    if (!isIssueOrPrUrl(href) || seen.has(href)) return;
-    seen.add(href);
-    const title = link.textContent?.trim() ?? "";
-    if (title) items.push({ title, url: href });
-  });
-  return items;
-}
-
-function getSelectedItems(): IssuePrItem[] {
-  const checked = document.querySelectorAll<HTMLInputElement>(
-    'input[type="checkbox"]:checked'
-  );
-  const items: IssuePrItem[] = [];
-  const seen = new Set<string>();
-  checked.forEach((cb) => {
-    const row =
-      cb.closest("div.Box-row") ??
-      cb.closest('[data-testid="issue-row"]') ??
-      cb.closest("tr") ??
-      cb.closest("li");
-    if (!row) return;
-    const link = row.querySelector<HTMLAnchorElement>(
-      'a[href*="/issues/"], a[href*="/pull/"]'
-    );
-    if (!link || !isIssueOrPrUrl(link.href) || seen.has(link.href)) return;
-    seen.add(link.href);
-    const title = link.textContent?.trim() ?? "";
-    if (title) items.push({ title, url: link.href });
-  });
-  return items;
-}
-
-const toolbarStatusStyles = {
-  copied: { marginLeft: "6px", color: "#3fb950", fontSize: "12px" } as React.CSSProperties,
-  error: { marginLeft: "6px", color: "#f85149", fontSize: "12px" } as React.CSSProperties,
-};
-
-const toolbarWrapperStyle: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "4px",
-};
-
-const ListToolbar = React.memo(function ListToolbar() {
-  const [status, setStatus] = React.useState<"idle" | "copied" | "error">("idle");
-  const timeoutRef = React.useRef<ReturnType<typeof setTimeout>>();
-
-  const handleCopy = React.useCallback(async (items: IssuePrItem[]) => {
-    clearTimeout(timeoutRef.current);
-    if (items.length === 0) {
-      setStatus("error");
-      timeoutRef.current = setTimeout(() => setStatus("idle"), 2000);
-      return;
-    }
-    try {
-      await copyToClipboard(formatCopyPayloadMultiple(items));
-      setStatus("copied");
-      timeoutRef.current = setTimeout(() => setStatus("idle"), 1500);
-    } catch (err) {
-      console.error("GitHub Buddy: Copy failed", err);
-      setStatus("error");
-      timeoutRef.current = setTimeout(() => setStatus("idle"), 2000);
-    }
-  }, []);
-
-  React.useEffect(() => () => clearTimeout(timeoutRef.current), []);
-
-  return (
-    <span style={toolbarWrapperStyle}>
-      <button
-        type="button"
-        onClick={() => handleCopy(getSelectedItems())}
-        style={buttonBaseStyle}
-        title="Copy selected issues/PRs"
-      >
-        <Copy size={10} strokeWidth={2} />
-        Copy Selected
-      </button>
-      <button
-        type="button"
-        onClick={() => handleCopy(getIssuePrItems())}
-        style={buttonBaseStyle}
-        title="Copy all visible issues/PRs on this page"
-      >
-        <Copy size={10} strokeWidth={2} />
-        Copy All (Current Page)
-      </button>
-      {status === "copied" && (
-        <span style={toolbarStatusStyles.copied}>Copied!</span>
-      )}
-      {status === "error" && (
-        <span style={toolbarStatusStyles.error}>Nothing to copy</span>
-      )}
-    </span>
-  );
-});
-
-function injectListToolbar() {
-  if (document.querySelector(`[${TOOLBAR_ATTR}]`)) return;
-
-  const toolbar = document.createElement("span");
-  toolbar.setAttribute(TOOLBAR_ATTR, "true");
-  toolbar.style.display = "inline-flex";
-  toolbar.style.alignItems = "center";
-  toolbar.style.gap = "8px";
-  toolbar.style.marginLeft = "12px";
-  toolbar.style.flexShrink = "0";
-
-  const root = createRoot(toolbar);
-  root.render(<ListToolbar />);
-
-  const closedLink = document.querySelector<HTMLElement>(
-    'a[href*="state=closed"], a[href*="is%3Aclosed"], a[href*="is:closed"]'
-  );
-  const openLink = document.querySelector<HTMLElement>(
-    'a[href*="state=open"], a[href*="is%3Aopen"], a[href*="is:open"]'
-  );
-  const insertAfter =
-    closedLink ?? openLink ?? document.querySelector('nav a[href*="state="]');
-
-  if (insertAfter?.parentElement) {
-    const parent = insertAfter.parentElement;
-    const next = insertAfter.nextElementSibling;
-    if (next) {
-      parent.insertBefore(toolbar, next);
-    } else {
-      parent.appendChild(toolbar);
-    }
-  } else {
-    const stateFilter =
-      document.querySelector(".UnderlineNav-body") ??
-      document.querySelector('[role="tablist"]') ??
-      document.querySelector(".table-list-header, .subnav") ??
-      document.querySelector('[data-testid="issue-list-filters"]');
-    if (stateFilter) {
-      stateFilter.appendChild(toolbar);
-    } else {
-      const repoContent = document.querySelector("#repo-content-pjax-container");
-      if (repoContent) {
-        const wrapper = document.createElement("div");
-        wrapper.style.marginBottom = "12px";
-        wrapper.appendChild(toolbar);
-        repoContent.insertBefore(wrapper, repoContent.firstChild);
-      }
-    }
-  }
-}
-
-function processStatusBadges() {
-  const rows = document.querySelectorAll(
-    "div.Box-row, [data-testid='issue-row'], tr.js-navigation-item, li.js-issue-row"
-  );
-
-  const match = (text: string) => {
-    const type = matchStatusBadge(text);
-    return type ? STATUS_STYLES[type] : null;
-  };
-
-  const process = (el: Element) => {
-    if (el.hasAttribute(STATUS_BADGE_ATTR)) return;
-    const text = el.textContent ?? "";
-    const style = match(text);
-    if (!style || !style.color) return;
-    const hasMatchingChild = Array.from(el.querySelectorAll("span, div, a, li")).some(
-      (c) => c !== el && match(c.textContent ?? "")
-    );
-    if (hasMatchingChild) return;
-
-    el.setAttribute(STATUS_BADGE_ATTR, "true");
-    const color = style.color as string;
-    const htmlEl = el as HTMLElement;
-    htmlEl.style.setProperty("color", color, "important");
-    if (style.fontSize) htmlEl.style.fontSize = style.fontSize as string;
-    if (style.fontWeight) htmlEl.style.setProperty("font-weight", style.fontWeight);
-    el.querySelectorAll("span, div, a, p").forEach((desc) => {
-      (desc as HTMLElement).style.setProperty("color", color, "important");
-    });
-  };
-
-  rows.forEach((row) => {
-    const candidates = Array.from(row.querySelectorAll("span, div, a, li"));
-    const withCount = candidates.map((el) => ({
-      el,
-      count: el.querySelectorAll("*").length,
-    }));
-    withCount.sort((a, b) => a.count - b.count);
-    withCount.forEach(({ el }) => process(el));
-  });
-}
-
-function processListPage() {
-  const links = document.querySelectorAll<HTMLAnchorElement>(
-    'a[href*="/issues/"], a[href*="/pull/"]'
-  );
-
-  const processed = new Set<string>();
-
-  links.forEach((link) => {
-    const href = link.href;
-    if (!isIssueOrPrUrl(href)) return;
-    if (processed.has(href)) return;
-    processed.add(href);
-    injectCopyButton(link);
-  });
-
-  injectListToolbar();
-  processStatusBadges();
-}
-
 function processDetailPage() {
-  const titleEl = document.querySelector("h1.gh-header-title span, h1 span.js-issue-title, .gh-header-title");
+  const titleEl = document.querySelector(
+    "h1.gh-header-title span, h1 span.js-issue-title, .gh-header-title"
+  );
   const fallback = document.querySelector("h1");
-  const target = titleEl ?? fallback;
+  const target = (titleEl ?? fallback) as HTMLElement | null;
   if (!target) return;
 
   const url = window.location.href;
@@ -347,51 +394,55 @@ function processDetailPage() {
 
   if (!title || (!url.includes("/issues/") && !url.includes("/pull/"))) return;
 
-  const existing = document.querySelector(`[${COPY_BUTTON_ATTR}="detail"]`);
-  if (existing) return;
+  if (document.querySelector(`[${COPY_BUTTON_ATTR}="detail"]`)) return;
 
   const container = document.createElement("span");
   container.setAttribute(COPY_BUTTON_ATTR, "detail");
-  container.style.display = "inline-flex";
-  container.style.alignItems = "center";
-  container.style.marginLeft = "8px";
-  container.style.verticalAlign = "middle";
+  container.style.cssText =
+    "display:inline-flex;align-items:center;margin-left:8px;vertical-align:middle";
 
   const root = createRoot(container);
-  root.render(
-    <CopyButton title={title} url={url} onCopied={() => {}} />
-  );
-
+  root.render(<CopyButton title={title} url={url} />);
   target.appendChild(container);
 }
 
-function isListReady(): boolean {
-  const links = document.querySelectorAll<HTMLAnchorElement>(
-    'a[href*="/issues/"], a[href*="/pull/"]'
-  );
-  return Array.from(links).some(
-    (a) => isIssueOrPrUrl(a.href)
-  );
-}
-
 function run() {
-  if (isDetailPage(window.location.pathname)) {
+  const pathname = window.location.pathname;
+  if (isDetailPage(pathname)) {
     processDetailPage();
-  } else {
-    if (!isListReady()) return;
-    processListPage();
+    return;
+  }
+
+  const links = document.querySelectorAll<HTMLAnchorElement>(ISSUE_PR_LINKS);
+  for (let i = 0; i < links.length; i++) {
+    if (isIssueOrPrUrl(links[i].href)) {
+      processListPage(links);
+      return;
+    }
   }
 }
 
-let debounceTimer: ReturnType<typeof setTimeout>;
-const observer = new MutationObserver(() => {
-  clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(run, 150);
-});
+function observeAndRun() {
+  const pathname = window.location.pathname;
+  if (isDetailPage(pathname)) {
+    run();
+    return;
+  }
 
-observer.observe(document.body, {
-  childList: true,
-  subtree: true,
-});
+  let debounceTimer: ReturnType<typeof setTimeout>;
+  const observer = new MutationObserver(() => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(run, DEBOUNCE_MS);
+  });
 
-run();
+  const target =
+    document.querySelector("#repo-content-pjax-container") ?? document.body;
+  observer.observe(target, { childList: true, subtree: true });
+  run();
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", observeAndRun);
+} else {
+  observeAndRun();
+}

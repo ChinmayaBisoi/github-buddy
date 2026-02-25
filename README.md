@@ -9,9 +9,9 @@ Chrome extension that adds copy buttons and status badges to GitHub issues and p
 - **Per-row Copy button**: Green compact button next to each issue/PR title in list views
 - **Issue/PR detail page**: Copy button next to the page title
 - **Copy Selected**: Copy all checked issues/PRs (use row checkboxes to select)
-- **Copy All**: Copy all visible issues/PRs on the current page
+- **Copy All (Current Page)**: Copy all visible issues/PRs on the current page
 
-Copy All and Copy Selected appear in the table header beside the Open/Closed filter tabs.
+Copy Selected and Copy All appear in the table header beside the Open/Closed filter tabs.
 
 ### Status badges (PR only)
 
@@ -84,7 +84,7 @@ npm test
 
 ```
 src/
-  content_script.tsx   # Injected into GitHub pages
+  content_script.tsx   # Injected into GitHub pages (vanilla DOM for list rows, React for toolbar/detail)
   utils.ts             # Pure helpers (tested)
   popup.tsx            # Extension popup UI
   options.tsx          # Options page
@@ -95,7 +95,16 @@ dist/                  # Built extension (load this in Chrome)
 ## Tech Stack
 
 - TypeScript
-- React
+- React (toolbar, detail page)
+- Vanilla DOM (per-row Copy buttons for performance)
 - Webpack
-- Lucide React (icons)
+- Lucide React (icons for toolbar/detail)
 - Jest
+
+## Performance
+
+- Per-row Copy buttons use vanilla DOM (no React roots per row)
+- Single DOM query for list processing (no duplicate `querySelectorAll`)
+- MutationObserver scoped to `#repo-content-pjax-container` when available
+- Detail page runs once (no observer)
+- 300ms debounce for list mutations
