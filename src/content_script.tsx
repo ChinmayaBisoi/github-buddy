@@ -1,9 +1,33 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { Copy } from "lucide-react";
-import { formatCopyPayload, isDetailPage, isIssueOrPrUrl, buildDetailTitle } from "./utils";
+import {
+  formatCopyPayload,
+  formatCopyPayloadMultiple,
+  isDetailPage,
+  isIssueOrPrUrl,
+  buildDetailTitle,
+} from "./utils";
 
 const COPY_BUTTON_ATTR = "data-github-buddy-copy";
+const TOOLBAR_ATTR = "data-github-buddy-toolbar";
+
+const buttonBaseStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: "4px",
+  padding: "4px 8px",
+  marginLeft: "6px",
+  background: "#238636",
+  border: "none",
+  borderRadius: "2px",
+  cursor: "pointer",
+  color: "#fff",
+  fontSize: "12px",
+  fontWeight: 500,
+  verticalAlign: "middle",
+};
 
 function copyToClipboard(text: string): Promise<void> {
   return navigator.clipboard.writeText(text);
@@ -41,30 +65,18 @@ function CopyButton({
       aria-label="Copy issue/PR name and URL"
       title="Copy name and URL"
       style={{
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "4px",
-        marginLeft: "6px",
-        background: "transparent",
-        border: "none",
-        borderRadius: "4px",
-        cursor: "pointer",
-        color: copied ? "#3fb950" : "var(--color-fg-muted, #8b949e)",
-        verticalAlign: "middle",
+        ...buttonBaseStyle,
+        background: copied ? "#2ea043" : "#238636",
       }}
       onMouseEnter={(e) => {
-        if (!copied) {
-          e.currentTarget.style.color = "var(--color-accent-fg, #58a6ff)";
-          e.currentTarget.style.background = "var(--color-accent-subtle, rgba(56,139,253,0.15))";
-        }
+        if (!copied) e.currentTarget.style.background = "#2ea043";
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.color = copied ? "#3fb950" : "var(--color-fg-muted, #8b949e)";
-        e.currentTarget.style.background = "transparent";
+        e.currentTarget.style.background = copied ? "#2ea043" : "#238636";
       }}
     >
-      <Copy size={14} strokeWidth={2} />
+      <Copy size={12} strokeWidth={2} />
+      <span>Copy</span>
     </button>
   );
 }
@@ -97,6 +109,131 @@ function injectCopyButton(link: HTMLAnchorElement) {
   link.parentNode?.insertBefore(container, link.nextSibling);
 }
 
+type IssuePrItem = { title: string; url: string };
+
+function getIssuePrItems(): IssuePrItem[] {
+  const links = document.querySelectorAll<HTMLAnchorElement>(
+    'a[href*="/issues/"], a[href*="/pull/"]'
+  );
+  const seen = new Set<string>();
+  const items: IssuePrItem[] = [];
+  links.forEach((link) => {
+    const href = link.href;
+    if (!isIssueOrPrUrl(href) || seen.has(href)) return;
+    seen.add(href);
+    const title = link.textContent?.trim() ?? "";
+    if (title) items.push({ title, url: href });
+  });
+  return items;
+}
+
+function getSelectedItems(): IssuePrItem[] {
+  const checked = document.querySelectorAll<HTMLInputElement>(
+    'input[type="checkbox"]:checked'
+  );
+  const items: IssuePrItem[] = [];
+  const seen = new Set<string>();
+  checked.forEach((cb) => {
+    const row =
+      cb.closest("div.Box-row") ??
+      cb.closest('[data-testid="issue-row"]') ??
+      cb.closest("tr") ??
+      cb.closest("li");
+    if (!row) return;
+    const link = row.querySelector<HTMLAnchorElement>(
+      'a[href*="/issues/"], a[href*="/pull/"]'
+    );
+    if (!link || !isIssueOrPrUrl(link.href) || seen.has(link.href)) return;
+    seen.add(link.href);
+    const title = link.textContent?.trim() ?? "";
+    if (title) items.push({ title, url: link.href });
+  });
+  return items;
+}
+
+function ListToolbar() {
+  const [status, setStatus] = React.useState<"idle" | "copied" | "error">("idle");
+
+  const handleCopy = async (items: IssuePrItem[]) => {
+    if (items.length === 0) {
+      setStatus("error");
+      setTimeout(() => setStatus("idle"), 2000);
+      return;
+    }
+    try {
+      await copyToClipboard(formatCopyPayloadMultiple(items));
+      setStatus("copied");
+      setTimeout(() => setStatus("idle"), 1500);
+    } catch (err) {
+      console.error("GitHub Buddy: Copy failed", err);
+      setStatus("error");
+      setTimeout(() => setStatus("idle"), 2000);
+    }
+  };
+
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+      <button
+        type="button"
+        onClick={() => handleCopy(getSelectedItems())}
+        style={buttonBaseStyle}
+        title="Copy selected issues/PRs"
+      >
+        <Copy size={12} strokeWidth={2} />
+        Copy Selected
+      </button>
+      <button
+        type="button"
+        onClick={() => handleCopy(getIssuePrItems())}
+        style={buttonBaseStyle}
+        title="Copy all visible issues/PRs on this page"
+      >
+        <Copy size={12} strokeWidth={2} />
+        Copy All
+      </button>
+      {status === "copied" && (
+        <span style={{ marginLeft: "6px", color: "#3fb950", fontSize: "12px" }}>
+          Copied!
+        </span>
+      )}
+      {status === "error" && (
+        <span style={{ marginLeft: "6px", color: "#f85149", fontSize: "12px" }}>
+          Nothing to copy
+        </span>
+      )}
+    </span>
+  );
+}
+
+function injectListToolbar() {
+  if (document.querySelector(`[${TOOLBAR_ATTR}]`)) return;
+
+  const toolbar = document.createElement("span");
+  toolbar.setAttribute(TOOLBAR_ATTR, "true");
+  toolbar.style.display = "inline-flex";
+  toolbar.style.alignItems = "center";
+
+  const root = createRoot(toolbar);
+  root.render(<ListToolbar />);
+
+  const target =
+    document.querySelector(".table-list-header, .issues-list-actions, .subnav") ??
+    document.querySelector('[data-testid="issue-list-filters"]') ??
+    document.querySelector(".d-flex.flex-wrap.gap-2") ??
+    document.querySelector(".flex-wrap.items-center");
+  if (target) {
+    target.appendChild(toolbar);
+  } else {
+    const repoContent = document.querySelector("#repo-content-pjax-container");
+    if (repoContent) {
+      const wrapper = document.createElement("div");
+      wrapper.style.marginBottom = "12px";
+      wrapper.appendChild(toolbar);
+      repoContent.insertBefore(wrapper, repoContent.firstChild);
+    }
+  }
+}
+
 function processListPage() {
   const links = document.querySelectorAll<HTMLAnchorElement>(
     'a[href*="/issues/"], a[href*="/pull/"]'
@@ -111,6 +248,8 @@ function processListPage() {
     processed.add(href);
     injectCopyButton(link);
   });
+
+  injectListToolbar();
 }
 
 function processDetailPage() {

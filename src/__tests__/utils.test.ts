@@ -2,6 +2,7 @@ import {
   isDetailPage,
   isIssueOrPrUrl,
   formatCopyPayload,
+  formatCopyPayloadMultiple,
   buildDetailTitle,
 } from "../utils";
 
@@ -49,6 +50,29 @@ describe("formatCopyPayload", () => {
 
   it("handles empty title", () => {
     expect(formatCopyPayload("", "https://example.com")).toBe("\nhttps://example.com");
+  });
+});
+
+describe("formatCopyPayloadMultiple", () => {
+  it("joins items with double newline", () => {
+    expect(
+      formatCopyPayloadMultiple([
+        { title: "Fix #1", url: "https://github.com/a/b/issues/1" },
+        { title: "Fix #2", url: "https://github.com/a/b/issues/2" },
+      ])
+    ).toBe(
+      "Fix #1\nhttps://github.com/a/b/issues/1\n\nFix #2\nhttps://github.com/a/b/issues/2"
+    );
+  });
+
+  it("handles single item", () => {
+    expect(
+      formatCopyPayloadMultiple([{ title: "Only", url: "https://x.com" }])
+    ).toBe("Only\nhttps://x.com");
+  });
+
+  it("handles empty array", () => {
+    expect(formatCopyPayloadMultiple([])).toBe("");
   });
 });
 

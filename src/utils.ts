@@ -12,6 +12,10 @@ export function formatCopyPayload(title: string, url: string): string {
   return `${title}\n${url}`;
 }
 
+export function formatCopyPayloadMultiple(items: Array<{ title: string; url: string }>): string {
+  return items.map(({ title, url }) => formatCopyPayload(title, url)).join("\n\n");
+}
+
 export function buildDetailTitle(titleText: string, url: string): string {
   const issueNum = url.match(/\/(?:issues|pull)\/(\d+)/)?.[1];
   const trimmed = titleText.trim();

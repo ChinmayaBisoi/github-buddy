@@ -4,14 +4,25 @@ Chrome extension that adds a copy button to GitHub issues and pull requests. Cli
 
 ## Features
 
-- **Issues list** (`/owner/repo/issues`): Copy icon next to each issue title
-- **Pull requests list** (`/owner/repo/pulls`): Copy icon next to each PR title
-- **Issue/PR detail page**: Copy icon next to the page title
+- **Issues list** (`/owner/repo/issues`): Green Copy button next to each issue title
+- **Pull requests list** (`/owner/repo/pulls`): Green Copy button next to each PR title
+- **Issue/PR detail page**: Copy button next to the page title
+- **Copy Selected**: Copy all checked issues/PRs (use row checkboxes to select)
+- **Copy All**: Copy all visible issues/PRs on the current page
 
-Copied format:
+Copied format (single):
 ```
 Title of the issue or PR #123
 https://github.com/owner/repo/issues/123
+```
+
+Multiple items are separated by a blank line:
+```
+Title 1 #123
+https://github.com/owner/repo/issues/123
+
+Title 2 #124
+https://github.com/owner/repo/issues/124
 ```
 
 ## Prerequisites
