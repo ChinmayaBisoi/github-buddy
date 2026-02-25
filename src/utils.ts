@@ -30,7 +30,7 @@ export const STATUS_STYLES: Record<
   { color: string; fontSize: string; fontWeight: string }
 > = {
   approved: { color: "#1a7f37", fontSize: "11px", fontWeight: "600" },
-  "review-required": { color: "#22d3ee", fontSize: "11px", fontWeight: "600" },
+  "review-required": { color: "#eab308", fontSize: "11px", fontWeight: "600" },
   "changes-requested": { color: "#cf222e", fontSize: "11px", fontWeight: "600" },
 };
 

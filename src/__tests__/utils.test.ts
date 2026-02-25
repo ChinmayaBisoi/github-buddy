@@ -138,11 +138,11 @@ describe("matchStatusBadge", () => {
 describe("STATUS_STYLES", () => {
   it("defines colors for all badge types", () => {
     expect(STATUS_STYLES.approved.color).toBe("#1a7f37");
-    expect(STATUS_STYLES["review-required"].color).toBe("#22d3ee");
+    expect(STATUS_STYLES["review-required"].color).toBe("#eab308");
     expect(STATUS_STYLES["changes-requested"].color).toBe("#cf222e");
   });
 
-  it("review-required uses cyan", () => {
-    expect(STATUS_STYLES["review-required"].color).toBe("#22d3ee");
+  it("review-required uses yellow", () => {
+    expect(STATUS_STYLES["review-required"].color).toBe("#eab308");
   });
 });
