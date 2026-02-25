@@ -1,21 +1,32 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 const Popup = () => {
   const [count, setCount] = useState(0);
   const [currentURL, setCurrentURL] = useState<string>();
+  const [currentTime, setCurrentTime] = useState(() =>
+    new Date().toLocaleTimeString()
+  );
 
   useEffect(() => {
     chrome.action.setBadgeText({ text: count.toString() });
   }, [count]);
 
   useEffect(() => {
-    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-      setCurrentURL(tabs[0].url);
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      setCurrentURL(tabs[0]?.url);
     });
   }, []);
 
-  const changeBackground = () => {
+  useEffect(() => {
+    const id = setInterval(
+      () => setCurrentTime(new Date().toLocaleTimeString()),
+      1000
+    );
+    return () => clearInterval(id);
+  }, []);
+
+  const changeBackground = useCallback(() => {
     chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
       const tab = tabs[0];
       if (tab.id) {
@@ -30,13 +41,13 @@ const Popup = () => {
         );
       }
     });
-  };
+  }, []);
 
   return (
     <>
       <ul style={{ minWidth: "700px" }}>
         <li>Current URL: {currentURL}</li>
-        <li>Current Time: {new Date().toLocaleTimeString()}</li>
+        <li>Current Time: {currentTime}</li>
       </ul>
       <button
         onClick={() => setCount(count + 1)}

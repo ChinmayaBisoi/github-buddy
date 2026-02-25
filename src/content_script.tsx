@@ -36,7 +36,7 @@ function copyToClipboard(text: string): Promise<void> {
   return navigator.clipboard.writeText(text);
 }
 
-function CopyButton({
+const CopyButton = React.memo(function CopyButton({
   title,
   url,
   onCopied,
@@ -46,8 +46,9 @@ function CopyButton({
   onCopied: () => void;
 }) {
   const [copied, setCopied] = React.useState(false);
+  const timeoutRef = React.useRef<ReturnType<typeof setTimeout>>();
 
-  const handleClick = async (e: React.MouseEvent) => {
+  const handleClick = React.useCallback(async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     const text = formatCopyPayload(title, url);
@@ -55,11 +56,13 @@ function CopyButton({
       await copyToClipboard(text);
       setCopied(true);
       onCopied();
-      setTimeout(() => setCopied(false), 1500);
+      timeoutRef.current = setTimeout(() => setCopied(false), 1500);
     } catch (err) {
       console.error("GitHub Buddy: Copy failed", err);
     }
-  };
+  }, [title, url, onCopied]);
+
+  React.useEffect(() => () => clearTimeout(timeoutRef.current), []);
 
   return (
     <button
@@ -82,7 +85,7 @@ function CopyButton({
       <span>Copy</span>
     </button>
   );
-}
+});
 
 function injectCopyButton(link: HTMLAnchorElement) {
   const href = link.href;
@@ -154,28 +157,43 @@ function getSelectedItems(): IssuePrItem[] {
   return items;
 }
 
-function ListToolbar() {
-  const [status, setStatus] = React.useState<"idle" | "copied" | "error">("idle");
+const toolbarStatusStyles = {
+  copied: { marginLeft: "6px", color: "#3fb950", fontSize: "12px" } as React.CSSProperties,
+  error: { marginLeft: "6px", color: "#f85149", fontSize: "12px" } as React.CSSProperties,
+};
 
-  const handleCopy = async (items: IssuePrItem[]) => {
+const toolbarWrapperStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "4px",
+};
+
+const ListToolbar = React.memo(function ListToolbar() {
+  const [status, setStatus] = React.useState<"idle" | "copied" | "error">("idle");
+  const timeoutRef = React.useRef<ReturnType<typeof setTimeout>>();
+
+  const handleCopy = React.useCallback(async (items: IssuePrItem[]) => {
+    clearTimeout(timeoutRef.current);
     if (items.length === 0) {
       setStatus("error");
-      setTimeout(() => setStatus("idle"), 2000);
+      timeoutRef.current = setTimeout(() => setStatus("idle"), 2000);
       return;
     }
     try {
       await copyToClipboard(formatCopyPayloadMultiple(items));
       setStatus("copied");
-      setTimeout(() => setStatus("idle"), 1500);
+      timeoutRef.current = setTimeout(() => setStatus("idle"), 1500);
     } catch (err) {
       console.error("GitHub Buddy: Copy failed", err);
       setStatus("error");
-      setTimeout(() => setStatus("idle"), 2000);
+      timeoutRef.current = setTimeout(() => setStatus("idle"), 2000);
     }
-  };
+  }, []);
+
+  React.useEffect(() => () => clearTimeout(timeoutRef.current), []);
 
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+    <span style={toolbarWrapperStyle}>
       <button
         type="button"
         onClick={() => handleCopy(getSelectedItems())}
@@ -195,18 +213,14 @@ function ListToolbar() {
         Copy All
       </button>
       {status === "copied" && (
-        <span style={{ marginLeft: "6px", color: "#3fb950", fontSize: "12px" }}>
-          Copied!
-        </span>
+        <span style={toolbarStatusStyles.copied}>Copied!</span>
       )}
       {status === "error" && (
-        <span style={{ marginLeft: "6px", color: "#f85149", fontSize: "12px" }}>
-          Nothing to copy
-        </span>
+        <span style={toolbarStatusStyles.error}>Nothing to copy</span>
       )}
     </span>
   );
-}
+});
 
 function injectListToolbar() {
   if (document.querySelector(`[${TOOLBAR_ATTR}]`)) return;
@@ -257,7 +271,7 @@ const STATUS_STYLES: Record<string, React.CSSProperties> = {
     fontWeight: 600,
   },
   "review-required": {
-    color: "#57606a",
+    color: "#22d3ee",
     fontSize: "11px",
     fontWeight: 600,
   },
@@ -300,10 +314,13 @@ function processStatusBadges() {
   };
 
   rows.forEach((row) => {
-    const candidates = Array.from(row.querySelectorAll("span, div, a, li")).sort(
-      (a, b) => (a.querySelectorAll("*").length ?? 0) - (b.querySelectorAll("*").length ?? 0)
-    );
-    candidates.forEach(process);
+    const candidates = Array.from(row.querySelectorAll("span, div, a, li"));
+    const withCount = candidates.map((el) => ({
+      el,
+      count: el.querySelectorAll("*").length,
+    }));
+    withCount.sort((a, b) => a.count - b.count);
+    withCount.forEach(({ el }) => process(el));
   });
 }
 
