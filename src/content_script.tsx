@@ -233,37 +233,29 @@ function injectListToolbar() {
   const root = createRoot(toolbar);
   root.render(<ListToolbar />);
 
-  const insertAfter =
-    document.querySelector<HTMLElement>(
-      'a[href*="state=closed"], a[href*="is%3Aclosed"], a[href*="is:closed"]'
-    ) ??
-    document.querySelector<HTMLElement>(
-      'a[href*="state=open"], a[href*="is%3Aopen"], a[href*="is:open"]'
-    ) ??
-    document.querySelector('nav a[href*="state="]');
-
-  if (insertAfter?.parentElement) {
-    const next = insertAfter.nextElementSibling;
-    insertAfter.parentElement.insertBefore(
-      toolbar,
-      next
-    );
+  const repoContent =
+    document.querySelector("#repo-content-pjax-container") ??
+    document.querySelector('[data-pjax-container]') ??
+    document.querySelector("main");
+  if (repoContent) {
+    const wrapper = document.createElement("div");
+    wrapper.style.cssText =
+      "display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:16px;padding:8px 0;border-bottom:1px solid var(--color-border-default,#d0d7de)";
+    wrapper.appendChild(toolbar);
+    repoContent.insertBefore(wrapper, repoContent.firstChild);
   } else {
-    const stateFilter =
-      document.querySelector(".UnderlineNav-body") ??
-      document.querySelector('[role="tablist"]') ??
-      document.querySelector(".table-list-header, .subnav") ??
-      document.querySelector('[data-testid="issue-list-filters"]');
-    if (stateFilter) {
-      stateFilter.appendChild(toolbar);
+    const insertAfter =
+      document.querySelector<HTMLElement>('a[href*="state=closed"]') ??
+      document.querySelector<HTMLElement>('a[href*="state=open"]') ??
+      document.querySelector<HTMLElement>('nav a[href*="/issues"]') ??
+      document.querySelector<HTMLElement>('nav a[href*="/pulls"]');
+    if (insertAfter?.parentElement) {
+      insertAfter.parentElement.insertBefore(
+        toolbar,
+        insertAfter.nextElementSibling
+      );
     } else {
-      const repoContent = document.querySelector("#repo-content-pjax-container");
-      if (repoContent) {
-        const wrapper = document.createElement("div");
-        wrapper.style.marginBottom = "12px";
-        wrapper.appendChild(toolbar);
-        repoContent.insertBefore(wrapper, repoContent.firstChild);
-      }
+      document.body.prepend(toolbar);
     }
   }
 }
@@ -435,9 +427,7 @@ function observeAndRun() {
     debounceTimer = setTimeout(run, DEBOUNCE_MS);
   });
 
-  const target =
-    document.querySelector("#repo-content-pjax-container") ?? document.body;
-  observer.observe(target, { childList: true, subtree: true });
+  observer.observe(document.body, { childList: true, subtree: true });
   run();
 }
 
