@@ -6,6 +6,7 @@ import {
   formatCopyPayload,
   formatCopyPayloadMultiple,
   isDetailPage,
+  isIssuesOrPullsPage,
   isIssueOrPrUrl,
   buildDetailTitle,
   matchStatusBadge,
@@ -457,6 +458,7 @@ function processDetailPage() {
 }
 
 function run() {
+  if (!isIssuesOrPullsPage(window.location.pathname)) return;
   const pathname = window.location.pathname;
   if (isDetailPage(pathname)) {
     processDetailPage();
@@ -473,6 +475,7 @@ function run() {
 }
 
 function observeAndRun() {
+  if (!isIssuesOrPullsPage(window.location.pathname)) return;
   const pathname = window.location.pathname;
   if (isDetailPage(pathname)) {
     run();

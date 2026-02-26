@@ -1,5 +1,6 @@
 import {
   isDetailPage,
+  isIssuesOrPullsPage,
   isIssueOrPrUrl,
   formatCopyPayload,
   formatCopyPayloadMultiple,
@@ -7,6 +8,33 @@ import {
   matchStatusBadge,
   STATUS_STYLES,
 } from "../utils";
+
+describe("isIssuesOrPullsPage", () => {
+  it("returns true for repo issues list and detail", () => {
+    expect(isIssuesOrPullsPage("/owner/repo/issues")).toBe(true);
+    expect(isIssuesOrPullsPage("/owner/repo/issues/123")).toBe(true);
+    expect(isIssuesOrPullsPage("/a/b/issues")).toBe(true);
+    expect(isIssuesOrPullsPage("/a/b/issues/1")).toBe(true);
+  });
+
+  it("returns true for repo pulls list and pull detail", () => {
+    expect(isIssuesOrPullsPage("/owner/repo/pulls")).toBe(true);
+    expect(isIssuesOrPullsPage("/owner/repo/pull/456")).toBe(true);
+  });
+
+  it("returns false for repo root and other pages", () => {
+    expect(isIssuesOrPullsPage("/owner/repo")).toBe(false);
+    expect(isIssuesOrPullsPage("/")).toBe(false);
+    expect(isIssuesOrPullsPage("/explore")).toBe(false);
+    expect(isIssuesOrPullsPage("/notifications")).toBe(false);
+    expect(isIssuesOrPullsPage("/owner/repo/issues/123/comments")).toBe(false);
+  });
+
+  it("normalizes trailing slash", () => {
+    expect(isIssuesOrPullsPage("/owner/repo/issues/")).toBe(true);
+    expect(isIssuesOrPullsPage("/owner/repo/pulls/")).toBe(true);
+  });
+});
 
 describe("isDetailPage", () => {
   it("returns true for issue detail path", () => {

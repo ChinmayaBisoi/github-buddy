@@ -1,5 +1,11 @@
 /** Pure utilities for GitHub Buddy content script. */
 
+/** Pathname is a repo issues or pulls page (list or detail). No other pages. */
+export function isIssuesOrPullsPage(pathname: string): boolean {
+  const path = pathname.replace(/\/$/, "") || "/";
+  return /^\/[^/]+\/[^/]+\/(issues(\/\d+)?|pulls|pull\/\d+)$/.test(path);
+}
+
 export function isDetailPage(pathname: string): boolean {
   return /\/issues\/\d+$/.test(pathname) || /\/pull\/\d+$/.test(pathname);
 }
