@@ -164,7 +164,20 @@ const buttonBaseStyle: React.CSSProperties = {
 
 const ListToolbar = React.memo(function ListToolbar() {
   const [status, setStatus] = React.useState<"idle" | "copied" | "error">("idle");
+  const [allCount, setAllCount] = React.useState(() => getIssuePrItems().length);
   const timeoutRef = React.useRef<ReturnType<typeof setTimeout>>();
+
+  React.useEffect(() => {
+    const updateCount = () => setAllCount(getIssuePrItems().length);
+    updateCount();
+    const container =
+      document.querySelector("#repo-content-pjax-container") ??
+      document.querySelector(".Box-body");
+    if (!container) return () => {};
+    const obs = new MutationObserver(updateCount);
+    obs.observe(container, { childList: true, subtree: true });
+    return () => obs.disconnect();
+  }, []);
 
   const handleCopy = React.useCallback(async (items: IssuePrItem[]) => {
     clearTimeout(timeoutRef.current);
@@ -206,7 +219,7 @@ const ListToolbar = React.memo(function ListToolbar() {
         title="Copy all visible issues/PRs on this page"
       >
         <Copy size={10} strokeWidth={2} />
-        Copy All (Current Page)
+        Copy All ({allCount})
       </button>
       {status === "copied" && (
         <span style={{ marginLeft: "6px", color: "#3fb950", fontSize: "12px" }}>
@@ -222,69 +235,114 @@ const ListToolbar = React.memo(function ListToolbar() {
   );
 });
 
+function findTableHeader(): HTMLElement | null {
+  // 1. Try the table header by known selectors
+  const byTestId = document.querySelector<HTMLElement>(
+    '[data-testid="table-header"]'
+  );
+  if (byTestId) return byTestId;
+
+  // 2. Look for .Box-header inside the issues/PRs list
+  const boxHeader = document.querySelector<HTMLElement>(
+    ".Box .Box-header, .Box-sc- .Box-header"
+  );
+  if (boxHeader) return boxHeader;
+
+  // 3. Find the "Open"/"Closed" links that live INSIDE the table (not the
+  //    nav tabs). Table-header links typically sit next to a "select-all"
+  //    checkbox or inside a div that also has sort/filter dropdowns.
+  const allStateLinks = document.querySelectorAll<HTMLAnchorElement>(
+    'a[href*="state=open"], a[href*="is%3Aopen"], a[href*="is:open"]'
+  );
+  for (let i = 0; i < allStateLinks.length; i++) {
+    const link = allStateLinks[i];
+    // The table-header version is inside a container that also has a checkbox
+    const container =
+      link.closest<HTMLElement>(".Box-header") ??
+      link.closest<HTMLElement>('[role="row"]') ??
+      link.closest<HTMLElement>("div");
+    if (!container) continue;
+    // Verify this container (or a sibling) has the select-all checkbox or
+    // sort/filter elements — that distinguishes the table header from nav tabs
+    if (
+      container.querySelector('input[type="checkbox"]') ||
+      container.querySelector('[aria-label*="Sort"]') ||
+      container.querySelector('details') ||
+      container.parentElement?.querySelector('input[type="checkbox"]')
+    ) {
+      return container.parentElement ?? container;
+    }
+  }
+
+  return null;
+}
+
 function injectListToolbar() {
   if (document.querySelector(`[${TOOLBAR_ATTR}]`)) return;
 
   const toolbar = document.createElement("span");
   toolbar.setAttribute(TOOLBAR_ATTR, "true");
   toolbar.style.cssText =
-    "display:inline-flex;align-items:center;gap:8px;margin-left:auto;flex-shrink:0";
+    "display:inline-flex;align-items:center;gap:4px;margin-left:8px;flex-shrink:0";
 
   const root = createRoot(toolbar);
   root.render(<ListToolbar />);
 
-  // Prefer: same row as Open/Closed/selected (right of that)
-  const stateLink =
-    document.querySelector<HTMLElement>('a[href*="state=open"]') ??
-    document.querySelector<HTMLElement>('a[href*="state=closed"]');
-  const openClosedRow =
-    stateLink?.closest('[role="tablist"]') ??
-    stateLink?.closest(".UnderlineNav") ??
-    stateLink?.parentElement;
+  const header = findTableHeader();
 
-  if (openClosedRow && openClosedRow instanceof HTMLElement) {
-    const row = openClosedRow;
-    if (row.style.display !== "flex") row.style.display = "flex";
-    if (!row.style.alignItems) row.style.alignItems = "center";
-    row.appendChild(toolbar);
+  if (header) {
+    header.style.display = "flex";
+    header.style.alignItems = "center";
+    header.style.flexWrap = "wrap";
+
+    // Find the state block: Open/Closed links (no selection) or "X selected" (selection).
+    // Insert toolbar as its next sibling so we stay in the same spot and survive DOM replacement.
+    let stateContainer: HTMLElement | null = null;
+    const openLink = header.querySelector<HTMLElement>(
+      'a[href*="state=open"], a[href*="is%3Aopen"], a[href*="is:open"]'
+    );
+    const closedLink = header.querySelector<HTMLElement>(
+      'a[href*="state=closed"], a[href*="is%3Aclosed"], a[href*="is:closed"]'
+    );
+    const anchor = closedLink ?? openLink;
+    if (anchor) stateContainer = anchor.parentElement;
+
+    if (!stateContainer) {
+      // Selected state: "12 selected" etc.
+      const walk = (el: Element): HTMLElement | null => {
+        if (/\d+\s*selected/.test((el as HTMLElement).textContent ?? ""))
+          return el as HTMLElement;
+        for (let i = 0; i < el.children.length; i++) {
+          const found = walk(el.children[i]);
+          if (found) return found;
+        }
+        return null;
+      };
+      const selectedEl = walk(header);
+      stateContainer = selectedEl?.parentElement ?? null;
+    }
+
+    if (stateContainer && stateContainer.parentElement === header) {
+      header.insertBefore(toolbar, stateContainer.nextSibling);
+    } else {
+      header.appendChild(toolbar);
+    }
     return;
   }
 
+  // Fallback: insert at top of repo content
   const repoContent =
     document.querySelector("#repo-content-pjax-container") ??
     document.querySelector('[data-pjax-container]') ??
     document.querySelector("main");
   if (repoContent) {
-    const insertAfter =
-      document.querySelector<HTMLElement>('a[href*="state=closed"]') ??
-      document.querySelector<HTMLElement>('a[href*="state=open"]');
-    const target =
-      insertAfter?.closest('[role="tablist"]') ??
-      insertAfter?.closest(".UnderlineNav") ??
-      insertAfter?.parentElement;
-    if (target?.nextElementSibling) {
-      target.parentElement?.insertBefore(toolbar, target.nextElementSibling);
-    } else {
-      const wrapper = document.createElement("div");
-      wrapper.style.cssText =
-        "display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:16px;padding:8px 0";
-      wrapper.appendChild(toolbar);
-      repoContent.insertBefore(wrapper, repoContent.firstChild);
-    }
+    const wrapper = document.createElement("div");
+    wrapper.style.cssText =
+      "display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:16px;padding:8px 0";
+    wrapper.appendChild(toolbar);
+    repoContent.insertBefore(wrapper, repoContent.firstChild);
   } else {
-    const insertAfter =
-      document.querySelector<HTMLElement>('a[href*="state=closed"]') ??
-      document.querySelector<HTMLElement>('a[href*="state=open"]') ??
-      document.querySelector<HTMLElement>('nav a[href*="/issues"]') ??
-      document.querySelector<HTMLElement>('nav a[href*="/pulls"]');
-    if (insertAfter?.parentElement) {
-      insertAfter.parentElement.insertBefore(
-        toolbar,
-        insertAfter.nextElementSibling
-      );
-    } else {
-      document.body.prepend(toolbar);
-    }
+    document.body.prepend(toolbar);
   }
 }
 
