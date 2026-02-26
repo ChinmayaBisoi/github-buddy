@@ -11,7 +11,9 @@ Chrome extension that adds copy buttons and status badges to GitHub issues and p
 - **Copy Selected**: Copy all checked issues/PRs (use row checkboxes to select)
 - **Copy All (Current Page)**: Copy all visible issues/PRs on the current page
 
-Copy Selected and Copy All appear in the table header beside the Open/Closed filter tabs.
+Copy Selected and Copy All appear in the table header beside the Open/Closed (or “X selected”) area. They stay visible when you select items—the toolbar is kept in place when GitHub switches to the bulk-action bar.
+
+Copy actions work on both **Issues** (new "Evolving Issues" UI) and **Pull requests** (classic layout) list pages. The toolbar is placed in the table header section on both—next to the Open/Closed tabs.
 
 ### Status badges (PR only)
 
@@ -23,7 +25,7 @@ PR review statuses are shown as colored text (no background):
 | Review required | Yellow (#eab308) |
 | Changes requested | Red (#cf222e) |
 
-Copy actions work on both issues and pull requests. Status badges appear on the PR list.
+Status badges appear on the PR list only.
 
 Copied format (single):
 ```
@@ -85,6 +87,7 @@ npm test
 ```
 src/
   content_script.tsx   # Injected into GitHub pages (vanilla DOM for list rows, React for toolbar/detail)
+  domHelpers.ts        # DOM helpers for list header discovery (tested)
   utils.ts             # Pure helpers (tested)
   popup.tsx            # Extension popup UI
   options.tsx          # Options page

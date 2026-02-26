@@ -1,6 +1,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { Copy } from "lucide-react";
+import { findTableHeader } from "./domHelpers";
 import {
   formatCopyPayload,
   formatCopyPayloadMultiple,
@@ -235,46 +236,12 @@ const ListToolbar = React.memo(function ListToolbar() {
   );
 });
 
-function findTableHeader(): HTMLElement | null {
-  // 1. Try the table header by known selectors
-  const byTestId = document.querySelector<HTMLElement>(
-    '[data-testid="table-header"]'
+function getListToolbarScope(): Element {
+  return (
+    document.querySelector("#repo-content-pjax-container") ??
+    document.querySelector('[data-pjax-container]') ??
+    document.body
   );
-  if (byTestId) return byTestId;
-
-  // 2. Look for .Box-header inside the issues/PRs list
-  const boxHeader = document.querySelector<HTMLElement>(
-    ".Box .Box-header, .Box-sc- .Box-header"
-  );
-  if (boxHeader) return boxHeader;
-
-  // 3. Find the "Open"/"Closed" links that live INSIDE the table (not the
-  //    nav tabs). Table-header links typically sit next to a "select-all"
-  //    checkbox or inside a div that also has sort/filter dropdowns.
-  const allStateLinks = document.querySelectorAll<HTMLAnchorElement>(
-    'a[href*="state=open"], a[href*="is%3Aopen"], a[href*="is:open"]'
-  );
-  for (let i = 0; i < allStateLinks.length; i++) {
-    const link = allStateLinks[i];
-    // The table-header version is inside a container that also has a checkbox
-    const container =
-      link.closest<HTMLElement>(".Box-header") ??
-      link.closest<HTMLElement>('[role="row"]') ??
-      link.closest<HTMLElement>("div");
-    if (!container) continue;
-    // Verify this container (or a sibling) has the select-all checkbox or
-    // sort/filter elements — that distinguishes the table header from nav tabs
-    if (
-      container.querySelector('input[type="checkbox"]') ||
-      container.querySelector('[aria-label*="Sort"]') ||
-      container.querySelector('details') ||
-      container.parentElement?.querySelector('input[type="checkbox"]')
-    ) {
-      return container.parentElement ?? container;
-    }
-  }
-
-  return null;
 }
 
 function injectListToolbar() {
@@ -288,15 +255,21 @@ function injectListToolbar() {
   const root = createRoot(toolbar);
   root.render(<ListToolbar />);
 
-  const header = findTableHeader();
+  const header = findTableHeader(getListToolbarScope());
 
   if (header) {
+    // New Issues UI: the metadata container already has the right flex layout.
+    // Just append the toolbar — don't override its CSS.
+    if (header.id && header.id.endsWith("-list-view-metadata")) {
+      header.appendChild(toolbar);
+      return;
+    }
+
+    // Classic layout (PRs, old Issues)
     header.style.display = "flex";
     header.style.alignItems = "center";
     header.style.flexWrap = "wrap";
 
-    // Find the state block: Open/Closed links (no selection) or "X selected" (selection).
-    // Insert toolbar as its next sibling so we stay in the same spot and survive DOM replacement.
     let stateContainer: HTMLElement | null = null;
     const openLink = header.querySelector<HTMLElement>(
       'a[href*="state=open"], a[href*="is%3Aopen"], a[href*="is:open"]'
@@ -308,7 +281,6 @@ function injectListToolbar() {
     if (anchor) stateContainer = anchor.parentElement;
 
     if (!stateContainer) {
-      // Selected state: "12 selected" etc.
       const walk = (el: Element): HTMLElement | null => {
         if (/\d+\s*selected/.test((el as HTMLElement).textContent ?? ""))
           return el as HTMLElement;
