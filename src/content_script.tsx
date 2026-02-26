@@ -228,21 +228,49 @@ function injectListToolbar() {
   const toolbar = document.createElement("span");
   toolbar.setAttribute(TOOLBAR_ATTR, "true");
   toolbar.style.cssText =
-    "display:inline-flex;align-items:center;gap:8px;margin-left:12px;flex-shrink:0";
+    "display:inline-flex;align-items:center;gap:8px;margin-left:auto;flex-shrink:0";
 
   const root = createRoot(toolbar);
   root.render(<ListToolbar />);
+
+  // Prefer: same row as Open/Closed/selected (right of that)
+  const stateLink =
+    document.querySelector<HTMLElement>('a[href*="state=open"]') ??
+    document.querySelector<HTMLElement>('a[href*="state=closed"]');
+  const openClosedRow =
+    stateLink?.closest('[role="tablist"]') ??
+    stateLink?.closest(".UnderlineNav") ??
+    stateLink?.parentElement;
+
+  if (openClosedRow && openClosedRow instanceof HTMLElement) {
+    const row = openClosedRow;
+    if (row.style.display !== "flex") row.style.display = "flex";
+    if (!row.style.alignItems) row.style.alignItems = "center";
+    row.appendChild(toolbar);
+    return;
+  }
 
   const repoContent =
     document.querySelector("#repo-content-pjax-container") ??
     document.querySelector('[data-pjax-container]') ??
     document.querySelector("main");
   if (repoContent) {
-    const wrapper = document.createElement("div");
-    wrapper.style.cssText =
-      "display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:16px;padding:8px 0;border-bottom:1px solid var(--color-border-default,#d0d7de)";
-    wrapper.appendChild(toolbar);
-    repoContent.insertBefore(wrapper, repoContent.firstChild);
+    const insertAfter =
+      document.querySelector<HTMLElement>('a[href*="state=closed"]') ??
+      document.querySelector<HTMLElement>('a[href*="state=open"]');
+    const target =
+      insertAfter?.closest('[role="tablist"]') ??
+      insertAfter?.closest(".UnderlineNav") ??
+      insertAfter?.parentElement;
+    if (target?.nextElementSibling) {
+      target.parentElement?.insertBefore(toolbar, target.nextElementSibling);
+    } else {
+      const wrapper = document.createElement("div");
+      wrapper.style.cssText =
+        "display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:16px;padding:8px 0";
+      wrapper.appendChild(toolbar);
+      repoContent.insertBefore(wrapper, repoContent.firstChild);
+    }
   } else {
     const insertAfter =
       document.querySelector<HTMLElement>('a[href*="state=closed"]') ??
