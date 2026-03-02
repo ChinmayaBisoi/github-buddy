@@ -2,6 +2,8 @@
 
 Chrome extension that adds copy buttons and status badges to GitHub issues and pull requests. Click to copy the full title (with issue/PR number) and URL in one action.
 
+<img width="1710" height="941" alt="image" src="https://github.com/user-attachments/assets/b456e09b-3add-4296-824f-2e901103bae0" />
+
 ## Features
 
 ### Copy actions
