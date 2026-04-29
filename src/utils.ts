@@ -14,12 +14,43 @@ export function isIssueOrPrUrl(href: string): boolean {
   return /\/issues\/\d+$/.test(href) || /\/pull\/\d+$/.test(href);
 }
 
+/** Escape text for use inside an HTML attribute or text node. */
+export function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/** Markdown link label escapes for CommonMark-style pastes (Slack, many editors). */
+function escapeMarkdownLinkText(title: string): string {
+  return title.replace(/\\/g, "\\\\").replace(/\[/g, "\\[").replace(/\]/g, "\\]");
+}
+
+/** Plain clipboard line: markdown link so title stays one line and linkifies where supported. */
 export function formatCopyPayload(title: string, url: string): string {
-  return `${title}\n${url}`;
+  const t = title.trim();
+  if (!t) return url;
+  return `[${escapeMarkdownLinkText(t)}](${url})`;
 }
 
 export function formatCopyPayloadMultiple(items: Array<{ title: string; url: string }>): string {
   return items.map(({ title, url }) => formatCopyPayload(title, url)).join("\n\n");
+}
+
+/** Rich HTML for one clickable title (paste into Gmail, Docs, Notion, etc.). */
+export function formatCopyPayloadHtml(title: string, url: string): string {
+  const t = title.trim();
+  const label = t ? escapeHtml(t) : escapeHtml(url);
+  const href = escapeHtml(url);
+  return `<a href="${href}">${label}</a>`;
+}
+
+export function formatCopyPayloadMultipleHtml(
+  items: Array<{ title: string; url: string }>
+): string {
+  return items.map(({ title, url }) => formatCopyPayloadHtml(title, url)).join("<br>");
 }
 
 export function buildDetailTitle(titleText: string, url: string): string {

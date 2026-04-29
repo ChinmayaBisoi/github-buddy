@@ -1,8 +1,12 @@
 # GitHub Buddy
 
-Chrome extension that adds copy buttons and status badges to GitHub issues and pull requests. Click to copy the full title (with issue/PR number) and URL in one action.
+Chrome extension that adds copy buttons and status badges to GitHub issues and pull requests. Copy puts a **clickable title** (HTML) plus a **Markdown link** fallback (`[title](url)`) on the clipboard so rich paste targets get one line per item instead of “title then raw URL”.
 
 <img width="1710" height="941" alt="image" src="https://github.com/user-attachments/assets/b456e09b-3add-4296-824f-2e901103bae0" />
+
+**Full reference (paths, clipboard strings, examples):** [docs/FUNCTIONALITY.md](docs/FUNCTIONALITY.md)
+
+**How we build (security, robustness, resilience, SOLID):** [docs/ENGINEERING.md](docs/ENGINEERING.md)
 
 ## Features
 
@@ -17,6 +21,8 @@ Copy Selected and Copy All appear in the table header beside the Open/Closed (or
 
 Copy actions work on both **Issues** (new "Evolving Issues" UI) and **Pull requests** (classic layout) list pages. The toolbar is placed in the table header section on both—next to the Open/Closed tabs.
 
+List toolbar buttons use **vanilla DOM** (same clipboard path as per-row Copy) so Chrome keeps a valid user gesture for rich `clipboard.write`.
+
 ### Status badges (PR only)
 
 PR review statuses are shown as colored text (no background):
@@ -29,20 +35,12 @@ PR review statuses are shown as colored text (no background):
 
 Status badges appear on the PR list only.
 
-Copied format (single):
-```
-Title of the issue or PR #123
-https://github.com/owner/repo/issues/123
-```
+### Clipboard (summary)
 
-Multiple items are separated by a blank line:
-```
-Title 1 #123
-https://github.com/owner/repo/issues/123
+- **HTML:** Anchors like `<a href="https://…">Title</a>` inside a small HTML document; multiple items separated by `<br>`.
+- **Plain text:** Markdown links `[title](https://…)` per item; items separated by a blank line. Empty title falls back to URL only.
 
-Title 2 #124
-https://github.com/owner/repo/issues/124
-```
+See [docs/FUNCTIONALITY.md](docs/FUNCTIONALITY.md) for exact behavior and examples.
 
 ## Prerequisites
 
@@ -88,27 +86,30 @@ npm test
 
 ```
 src/
-  content_script.tsx   # Injected into GitHub pages (vanilla DOM for list rows, React for toolbar/detail)
+  content_script.tsx   # GitHub injection: vanilla list rows + toolbar; React detail Copy only
   domHelpers.ts        # DOM helpers for list header discovery (tested)
   utils.ts             # Pure helpers (tested)
   popup.tsx            # Extension popup UI
   options.tsx          # Options page
   background.ts        # Service worker
+docs/
+  FUNCTIONALITY.md     # Full behavior, clipboard format, examples
+  ENGINEERING.md       # Priorities: security, robustness, resilience, SOLID
 dist/                  # Built extension (load this in Chrome)
 ```
 
 ## Tech Stack
 
 - TypeScript
-- React (toolbar, detail page)
-- Vanilla DOM (per-row Copy buttons for performance)
+- React (detail page Copy button only)
+- Vanilla DOM (list rows, list toolbar, toasts, per-row Copy)
 - Webpack
-- Lucide React (icons for toolbar/detail)
+- Lucide React (icon on detail Copy button)
 - Jest
 
 ## Performance
 
-- Per-row Copy buttons use vanilla DOM (no React roots per row)
+- Per-row Copy and list toolbar use vanilla DOM (only the detail page uses a small React root)
 - Single DOM query for list processing (no duplicate `querySelectorAll`)
 - MutationObserver scoped to `#repo-content-pjax-container` when available
 - Detail page runs once (no observer)

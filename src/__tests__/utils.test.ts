@@ -4,6 +4,8 @@ import {
   isIssueOrPrUrl,
   formatCopyPayload,
   formatCopyPayloadMultiple,
+  formatCopyPayloadHtml,
+  escapeHtml,
   buildDetailTitle,
   matchStatusBadge,
   STATUS_STYLES,
@@ -72,33 +74,57 @@ describe("isIssueOrPrUrl", () => {
 });
 
 describe("formatCopyPayload", () => {
-  it("formats title and URL with newline", () => {
+  it("formats a markdown link (plain-text fallback)", () => {
     expect(formatCopyPayload("Fix bug #123", "https://github.com/a/b/issues/123")).toBe(
-      "Fix bug #123\nhttps://github.com/a/b/issues/123"
+      "[Fix bug #123](https://github.com/a/b/issues/123)"
     );
   });
 
-  it("handles empty title", () => {
-    expect(formatCopyPayload("", "https://example.com")).toBe("\nhttps://example.com");
+  it("handles empty title (URL only)", () => {
+    expect(formatCopyPayload("", "https://example.com")).toBe("https://example.com");
+  });
+
+  it("escapes markdown metacharacters in title", () => {
+    expect(formatCopyPayload("a]b[c", "https://x.com/u")).toBe("[a\\]b\\[c](https://x.com/u)");
+  });
+});
+
+describe("escapeHtml", () => {
+  it("escapes special characters", () => {
+    expect(escapeHtml(`a<b c="d">e&f`)).toBe("a&lt;b c=&quot;d&quot;&gt;e&amp;f");
+  });
+});
+
+describe("formatCopyPayloadHtml", () => {
+  it("wraps title in anchor", () => {
+    expect(formatCopyPayloadHtml("Hi", "https://a.com/1")).toBe(
+      '<a href="https://a.com/1">Hi</a>'
+    );
+  });
+
+  it("escapes title and URL for HTML", () => {
+    expect(formatCopyPayloadHtml('Say "yes"', "https://a.com?q=1&r=2")).toBe(
+      '<a href="https://a.com?q=1&amp;r=2">Say &quot;yes&quot;</a>'
+    );
   });
 });
 
 describe("formatCopyPayloadMultiple", () => {
-  it("joins items with double newline", () => {
+  it("joins markdown links with double newline", () => {
     expect(
       formatCopyPayloadMultiple([
         { title: "Fix #1", url: "https://github.com/a/b/issues/1" },
         { title: "Fix #2", url: "https://github.com/a/b/issues/2" },
       ])
     ).toBe(
-      "Fix #1\nhttps://github.com/a/b/issues/1\n\nFix #2\nhttps://github.com/a/b/issues/2"
+      "[Fix #1](https://github.com/a/b/issues/1)\n\n[Fix #2](https://github.com/a/b/issues/2)"
     );
   });
 
   it("handles single item", () => {
     expect(
       formatCopyPayloadMultiple([{ title: "Only", url: "https://x.com" }])
-    ).toBe("Only\nhttps://x.com");
+    ).toBe("[Only](https://x.com)");
   });
 
   it("handles empty array", () => {

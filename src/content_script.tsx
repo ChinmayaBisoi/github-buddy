@@ -3,8 +3,8 @@ import { createRoot } from "react-dom/client";
 import { Copy } from "lucide-react";
 import { findTableHeader } from "./domHelpers";
 import {
-  formatCopyPayload,
   formatCopyPayloadMultiple,
+  formatCopyPayloadMultipleHtml,
   isDetailPage,
   isIssuesOrPullsPage,
   isIssueOrPrUrl,
@@ -28,8 +28,26 @@ const buttonStyle =
 const COPY_ICON =
   '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
 
-function copyToClipboard(text: string): Promise<void> {
-  return navigator.clipboard.writeText(text);
+type IssuePrItem = { title: string; url: string };
+
+async function copyIssueLinksRich(items: IssuePrItem[]): Promise<void> {
+  const plain = formatCopyPayloadMultiple(items);
+  const innerHtml = formatCopyPayloadMultipleHtml(items);
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><!--StartFragment-->${innerHtml}<!--EndFragment--></body></html>`;
+  if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "text/plain": Promise.resolve(new Blob([plain], { type: "text/plain;charset=utf-8" })),
+          "text/html": Promise.resolve(new Blob([html], { type: "text/html;charset=utf-8" })),
+        }),
+      ]);
+      return;
+    } catch {
+      // Older browsers / restricted contexts: fall back to plain text below.
+    }
+  }
+  await navigator.clipboard.writeText(plain);
 }
 
 function showToast(message: string, duration = 1500) {
@@ -61,8 +79,8 @@ function showToast(message: string, duration = 1500) {
 function createVanillaCopyButton(title: string, url: string): HTMLButtonElement {
   const btn = document.createElement("button");
   btn.type = "button";
-  btn.setAttribute("aria-label", "Copy issue/PR name and URL");
-  btn.title = "Copy name and URL";
+  btn.setAttribute("aria-label", "Copy issue/PR title as link");
+  btn.title = "Copy title as link";
   btn.style.cssText = buttonStyle;
   btn.innerHTML = COPY_ICON + '<span>Copy</span>';
 
@@ -71,7 +89,7 @@ function createVanillaCopyButton(title: string, url: string): HTMLButtonElement 
     e.preventDefault();
     e.stopPropagation();
     try {
-      await copyToClipboard(formatCopyPayload(title, url));
+      await copyIssueLinksRich([{ title, url }]);
       showToast("Copied!");
       btn.style.background = "#2ea043";
       copyTimeout = setTimeout(() => {
@@ -107,8 +125,6 @@ function injectCopyButton(link: HTMLAnchorElement, href: string, title: string) 
   container.appendChild(createVanillaCopyButton(title, href));
   link.parentNode?.insertBefore(container, link.nextSibling);
 }
-
-type IssuePrItem = { title: string; url: string };
 
 function getIssuePrItems(): IssuePrItem[] {
   const links = document.querySelectorAll<HTMLAnchorElement>(ISSUE_PR_LINKS);
@@ -164,78 +180,95 @@ const buttonBaseStyle: React.CSSProperties = {
   lineHeight: 1.2,
 };
 
-const ListToolbar = React.memo(function ListToolbar() {
-  const [status, setStatus] = React.useState<"idle" | "copied" | "error">("idle");
-  const [allCount, setAllCount] = React.useState(() => getIssuePrItems().length);
-  const timeoutRef = React.useRef<ReturnType<typeof setTimeout>>();
+/**
+ * List actions must use native click listeners (same as per-row Copy).
+ * React's async onClick can drop Chrome's user-activation budget for clipboard.write(),
+ * so rich HTML never lands and paste targets fall back to plain text in a worse shape.
+ */
+function mountVanillaListToolbar(toolbar: HTMLElement): void {
+  const statusEl = document.createElement("span");
+  statusEl.style.cssText = "margin-left:6px;font-size:12px";
+  let statusClearTimer: ReturnType<typeof setTimeout> | undefined;
 
-  React.useEffect(() => {
-    const updateCount = () => setAllCount(getIssuePrItems().length);
-    updateCount();
-    const container =
-      document.querySelector("#repo-content-pjax-container") ??
-      document.querySelector(".Box-body");
-    if (!container) return () => {};
-    const obs = new MutationObserver(updateCount);
-    obs.observe(container, { childList: true, subtree: true });
-    return () => obs.disconnect();
-  }, []);
+  const showInlineStatus = (kind: "copied" | "error") => {
+    if (statusClearTimer) clearTimeout(statusClearTimer);
+    statusEl.textContent = kind === "copied" ? "Copied!" : "Nothing to copy";
+    statusEl.style.color = kind === "copied" ? "#3fb950" : "#f85149";
+    statusClearTimer = setTimeout(() => {
+      statusEl.textContent = "";
+      statusClearTimer = undefined;
+    }, kind === "copied" ? 1500 : 2000);
+  };
 
-  const handleCopy = React.useCallback(async (items: IssuePrItem[]) => {
-    clearTimeout(timeoutRef.current);
-    if (items.length === 0) {
-      showToast("Nothing to copy");
-      setStatus("error");
-      timeoutRef.current = setTimeout(() => setStatus("idle"), 2000);
-      return;
-    }
-    try {
-      await copyToClipboard(formatCopyPayloadMultiple(items));
-      showToast("Copied!");
-      setStatus("copied");
-      timeoutRef.current = setTimeout(() => setStatus("idle"), 1500);
-    } catch (err) {
-      console.error("GitHub Buddy: Copy failed", err);
-      setStatus("error");
-      timeoutRef.current = setTimeout(() => setStatus("idle"), 2000);
-    }
-  }, []);
+  const attachCopyHandler = (btn: HTMLButtonElement, getItems: () => IssuePrItem[]) => {
+    let highlightTimer: ReturnType<typeof setTimeout> | undefined;
+    btn.addEventListener("click", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const items = getItems();
+      if (items.length === 0) {
+        showToast("Nothing to copy");
+        showInlineStatus("error");
+        return;
+      }
+      try {
+        await copyIssueLinksRich(items);
+        showToast("Copied!");
+        showInlineStatus("copied");
+        btn.style.background = "#2ea043";
+        highlightTimer = setTimeout(() => {
+          btn.style.background = "#238636";
+          highlightTimer = undefined;
+        }, 1500);
+      } catch (err) {
+        console.error("GitHub Buddy: Copy failed", err);
+        showInlineStatus("error");
+      }
+    });
+    btn.addEventListener("mouseenter", () => {
+      if (!highlightTimer) btn.style.background = "#2ea043";
+    });
+    btn.addEventListener("mouseleave", () => {
+      if (!highlightTimer) btn.style.background = "#238636";
+    });
+  };
 
-  React.useEffect(() => () => clearTimeout(timeoutRef.current), []);
+  const copySelectedBtn = document.createElement("button");
+  copySelectedBtn.type = "button";
+  copySelectedBtn.title = "Copy selected issues/PRs";
+  copySelectedBtn.style.cssText = buttonStyle;
+  copySelectedBtn.innerHTML = COPY_ICON + "<span>Copy Selected</span>";
+  attachCopyHandler(copySelectedBtn, getSelectedItems);
 
-  return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-      <button
-        type="button"
-        onClick={() => handleCopy(getSelectedItems())}
-        style={buttonBaseStyle}
-        title="Copy selected issues/PRs"
-      >
-        <Copy size={10} strokeWidth={2} />
-        Copy Selected
-      </button>
-      <button
-        type="button"
-        onClick={() => handleCopy(getIssuePrItems())}
-        style={buttonBaseStyle}
-        title="Copy all visible issues/PRs on this page"
-      >
-        <Copy size={10} strokeWidth={2} />
-        Copy All ({allCount})
-      </button>
-      {status === "copied" && (
-        <span style={{ marginLeft: "6px", color: "#3fb950", fontSize: "12px" }}>
-          Copied!
-        </span>
-      )}
-      {status === "error" && (
-        <span style={{ marginLeft: "6px", color: "#f85149", fontSize: "12px" }}>
-          Nothing to copy
-        </span>
-      )}
-    </span>
-  );
-});
+  const copyAllBtn = document.createElement("button");
+  copyAllBtn.type = "button";
+  copyAllBtn.title = "Copy all visible issues/PRs on this page";
+  copyAllBtn.style.cssText = buttonStyle;
+  const renderCopyAllLabel = () => {
+    copyAllBtn.innerHTML = COPY_ICON + `<span>Copy All (${getIssuePrItems().length})</span>`;
+  };
+  renderCopyAllLabel();
+  attachCopyHandler(copyAllBtn, getIssuePrItems);
+
+  toolbar.appendChild(copySelectedBtn);
+  toolbar.appendChild(copyAllBtn);
+  toolbar.appendChild(statusEl);
+
+  const countScope =
+    document.querySelector("#repo-content-pjax-container") ??
+    document.querySelector(".Box-body");
+  if (countScope) {
+    let lastIssueCount = getIssuePrItems().length;
+    const obs = new MutationObserver(() => {
+      const n = getIssuePrItems().length;
+      if (n !== lastIssueCount) {
+        lastIssueCount = n;
+        renderCopyAllLabel();
+      }
+    });
+    obs.observe(countScope, { childList: true, subtree: true });
+  }
+}
 
 function getListToolbarScope(): Element {
   return (
@@ -253,8 +286,7 @@ function injectListToolbar() {
   toolbar.style.cssText =
     "display:inline-flex;align-items:center;gap:4px;margin-left:8px;flex-shrink:0";
 
-  const root = createRoot(toolbar);
-  root.render(<ListToolbar />);
+  mountVanillaListToolbar(toolbar);
 
   const header = findTableHeader(getListToolbarScope());
 
@@ -395,7 +427,7 @@ const CopyButton = React.memo(function CopyButton({
       e.preventDefault();
       e.stopPropagation();
       try {
-        await copyToClipboard(formatCopyPayload(title, url));
+        await copyIssueLinksRich([{ title, url }]);
         showToast("Copied!");
         setCopied(true);
         timeoutRef.current = setTimeout(() => setCopied(false), 1500);
@@ -412,8 +444,8 @@ const CopyButton = React.memo(function CopyButton({
     <button
       type="button"
       onClick={handleClick}
-      aria-label="Copy issue/PR name and URL"
-      title="Copy name and URL"
+      aria-label="Copy issue/PR title as link"
+      title="Copy title as link"
       style={{
         ...buttonBaseStyle,
         background: copied ? "#2ea043" : "#238636",

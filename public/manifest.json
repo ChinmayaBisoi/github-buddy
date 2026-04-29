@@ -20,6 +20,6 @@
     }
   ],
   "background": { "service_worker": "js/background.js" },
-  "permissions": ["storage"],
+  "permissions": ["storage", "clipboardWrite"],
   "host_permissions": ["https://github.com/*"]
 }
