@@ -2,6 +2,8 @@ import {
   isDetailPage,
   isIssuesOrPullsPage,
   isIssueOrPrUrl,
+  parseIssueOrPullRef,
+  formatCopyLinkLabel,
   formatCopyPayload,
   formatCopyPayloadMultiple,
   formatCopyPayloadHtml,
@@ -73,19 +75,68 @@ describe("isIssueOrPrUrl", () => {
   });
 });
 
-describe("formatCopyPayload", () => {
-  it("formats a markdown link (plain-text fallback)", () => {
-    expect(formatCopyPayload("Fix bug #123", "https://github.com/a/b/issues/123")).toBe(
-      "[Fix bug #123](https://github.com/a/b/issues/123)"
+describe("parseIssueOrPullRef", () => {
+  it("detects pull before issue segment when both appear", () => {
+    expect(parseIssueOrPullRef("https://github.com/o/r/pull/99")).toEqual({
+      kind: "pull",
+      num: "99",
+    });
+  });
+
+  it("parses issue", () => {
+    expect(parseIssueOrPullRef("https://github.com/o/r/issues/7")).toEqual({
+      kind: "issue",
+      num: "7",
+    });
+  });
+
+  it("returns null when no id", () => {
+    expect(parseIssueOrPullRef("https://example.com/")).toBe(null);
+  });
+});
+
+describe("formatCopyLinkLabel", () => {
+  it("returns PR #n for pull URLs", () => {
+    expect(formatCopyLinkLabel("https://github.com/EasySLR/next-easyslr/pull/3223")).toBe(
+      "PR #3223"
     );
   });
 
-  it("handles empty title (URL only)", () => {
-    expect(formatCopyPayload("", "https://example.com")).toBe("https://example.com");
+  it("returns Issue #n for issue URLs", () => {
+    expect(formatCopyLinkLabel("https://github.com/a/b/issues/42")).toBe("Issue #42");
+  });
+});
+
+describe("formatCopyPayload", () => {
+  it("puts plain title then Issue link markdown", () => {
+    expect(formatCopyPayload("Fix bug #123", "https://github.com/a/b/issues/123")).toBe(
+      "Fix bug #123 [Issue #123](https://github.com/a/b/issues/123)"
+    );
   });
 
-  it("escapes markdown metacharacters in title", () => {
-    expect(formatCopyPayload("a]b[c", "https://x.com/u")).toBe("[a\\]b\\[c](https://x.com/u)");
+  it("puts plain title then PR link markdown", () => {
+    expect(
+      formatCopyPayload(
+        "security(upload): fix PDF",
+        "https://github.com/EasySLR/next-easyslr/pull/3223"
+      )
+    ).toBe(
+      "security(upload): fix PDF [PR #3223](https://github.com/EasySLR/next-easyslr/pull/3223)"
+    );
+  });
+
+  it("handles empty title (link label only)", () => {
+    expect(formatCopyPayload("", "https://github.com/a/b/pull/1")).toBe(
+      "[PR #1](https://github.com/a/b/pull/1)"
+    );
+  });
+
+  it("handles non-GitHub shape: title plus raw URL", () => {
+    expect(formatCopyPayload("Only", "https://x.com")).toBe("Only https://x.com");
+  });
+
+  it("handles non-GitHub URL with empty title", () => {
+    expect(formatCopyPayload("", "https://example.com")).toBe("https://example.com");
   });
 });
 
@@ -96,35 +147,39 @@ describe("escapeHtml", () => {
 });
 
 describe("formatCopyPayloadHtml", () => {
-  it("wraps title in anchor", () => {
-    expect(formatCopyPayloadHtml("Hi", "https://a.com/1")).toBe(
-      '<a href="https://a.com/1">Hi</a>'
+  it("plain title then Issue anchor", () => {
+    expect(
+      formatCopyPayloadHtml("Hi", "https://github.com/o/r/issues/100")
+    ).toBe(
+      'Hi <a href="https://github.com/o/r/issues/100">Issue #100</a>'
     );
   });
 
-  it("escapes title and URL for HTML", () => {
-    expect(formatCopyPayloadHtml('Say "yes"', "https://a.com?q=1&r=2")).toBe(
-      '<a href="https://a.com?q=1&amp;r=2">Say &quot;yes&quot;</a>'
+  it("escapes title and uses PR anchor", () => {
+    expect(
+      formatCopyPayloadHtml('Say "yes"', "https://github.com/o/r/pull/2")
+    ).toBe(
+      'Say &quot;yes&quot; <a href="https://github.com/o/r/pull/2">PR #2</a>'
     );
   });
 });
 
 describe("formatCopyPayloadMultiple", () => {
-  it("joins markdown links with double newline", () => {
+  it("joins lines with double newline", () => {
     expect(
       formatCopyPayloadMultiple([
         { title: "Fix #1", url: "https://github.com/a/b/issues/1" },
         { title: "Fix #2", url: "https://github.com/a/b/issues/2" },
       ])
     ).toBe(
-      "[Fix #1](https://github.com/a/b/issues/1)\n\n[Fix #2](https://github.com/a/b/issues/2)"
+      "Fix #1 [Issue #1](https://github.com/a/b/issues/1)\n\nFix #2 [Issue #2](https://github.com/a/b/issues/2)"
     );
   });
 
-  it("handles single item", () => {
+  it("handles single item without parseable id", () => {
     expect(
       formatCopyPayloadMultiple([{ title: "Only", url: "https://x.com" }])
-    ).toBe("[Only](https://x.com)");
+    ).toBe("Only https://x.com");
   });
 
   it("handles empty array", () => {

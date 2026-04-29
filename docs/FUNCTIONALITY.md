@@ -71,33 +71,42 @@ Built by `formatCopyPayloadMultiple`:
 
 Per item (`formatCopyPayload`):
 
-- If `title.trim()` is empty: plain text is **only the URL** (no markdown).
-- Otherwise: a **Markdown inline link**: `[escapedTitle](url)`.
-- Escaping in the title: `\`, `[`, and `]` are backslash-escaped for the label.
+- URLs are parsed with `parseIssueOrPullRef`: `/pull/<id>` yields label **`PR #<id>`**, `/issues/<id>` yields **`Issue #<id>`** (pull is detected first if both patterns appeared in a weird URL).
+- If `title.trim()` is non-empty and a ref exists: **plain title**, space, then **Markdown link** only on the short label: `Title… [PR #3223](url)`.
+- If title is empty and a ref exists: `[PR #3223](url)` (or Issue) only.
+- If the URL has **no** parseable ref: empty title → raw `url`; with title → `title url` (plain, no markdown link).
+- The markdown link label (`PR #n` / `Issue #n`) is escaped for `[` `]` `\` via `escapeMarkdownLinkText` (titles are **not** wrapped in markdown, so title characters do not need that escaping).
 
-**Example (single):**
+**Example (single PR):**
 
 ```text
-[security(upload): fix project-scoped PDF / upload mutations (#3210)](https://github.com/EasySLR/next-easyslr/pull/3223)
+security(upload): fix project-scoped PDF / upload mutations (#3210) [PR #3223](https://github.com/EasySLR/next-easyslr/pull/3223)
 ```
 
-**Example (two items):**
+**Example (two issues):**
 
 ```text
-[Fix bug #1](https://github.com/org/repo/issues/1)
+Fix bug a [Issue #1](https://github.com/org/repo/issues/1)
 
-[Fix bug #2](https://github.com/org/repo/issues/2)
+Fix bug b [Issue #2](https://github.com/org/repo/issues/2)
 ```
 
 ### Step 2: Rich HTML (`text/html`)
 
 Inner fragment from `formatCopyPayloadMultipleHtml`:
 
-- Each item is `formatCopyPayloadHtml(title, url)`: `<a href="escapedUrl">escapedLabel</a>`.
-- Label is trimmed title, or the URL if title is empty.
-- `&`, `<`, `>`, `"` are escaped in both `href` and text (attribute-safe).
+- Each item is `formatCopyPayloadHtml(title, url)`: **escaped plain title** (if any), space, then `<a href="escapedUrl">PR #n</a>` or `Issue #n`. Empty title: anchor only.
+- If there is no parseable ref: same fallback as plain text rendered as HTML (title + anchor with `href` text, or single anchor with URL as text).
 
-Multiple items are joined with `<br>` between anchors (no extra wrapper elements).
+`&`, `<`, `>`, `"` are escaped in `href`, title text, and anchor label.
+
+Multiple items are joined with `<br>` between rows (no extra wrapper elements).
+
+**Example HTML fragment (one PR):**
+
+```html
+security(upload): fix … (#3210) <a href="https://github.com/…/pull/3223">PR #3223</a>
+```
 
 That fragment is embedded in a **minimal HTML document** for the clipboard:
 
@@ -114,8 +123,8 @@ That fragment is embedded in a **minimal HTML document** for the clipboard:
 
 ### What users see after paste
 
-- **Rich targets** (Gmail, Google Docs, many editors, Notion, etc.): Usually a **clickable title** (or several, separated by line breaks from `<br>`), not a separate raw URL line under each title.
-- **Plain-only targets** (some chats, terminals, plain `.txt`): They get the Markdown (or bare URL if title was empty). Linkification depends on the app.
+- **Rich targets** (Gmail, Google Docs, many editors, Notion, etc.): **Title as normal text**, then a **clickable `PR #n` or `Issue #n`** (per line for multiple items). The full title is not the hyperlink.
+- **Plain-only targets** (some chats, terminals, plain `.txt`): They get the plain title plus markdown link on the short label (or label-only markdown when title is empty). Linkification depends on the app.
 - **Toast:** A short bottom-centered toast (“Copied!” or “Nothing to copy”) appears on the GitHub tab for ~1.5–2s. Toolbar actions also flash green/red status text next to the buttons briefly.
 
 ## PR list status badge styling

@@ -1,6 +1,6 @@
 # GitHub Buddy
 
-Chrome extension that adds copy buttons and status badges to GitHub issues and pull requests. Copy puts a **clickable title** (HTML) plus a **Markdown link** fallback (`[title](url)`) on the clipboard so rich paste targets get one line per item instead of “title then raw URL”.
+Chrome extension that adds copy buttons and status badges to GitHub issues and pull requests. Copy puts the **full title as plain text** and a **short rich link** (`PR #n` / `Issue #n`) at the end: HTML paste gets a normal title plus one clickable ref; plain text uses `Title [PR #n](url)` style.
 
 <img width="1710" height="941" alt="image" src="https://github.com/user-attachments/assets/b456e09b-3add-4296-824f-2e901103bae0" />
 
@@ -37,8 +37,8 @@ Status badges appear on the PR list only.
 
 ### Clipboard (summary)
 
-- **HTML:** Anchors like `<a href="https://…">Title</a>` inside a small HTML document; multiple items separated by `<br>`.
-- **Plain text:** Markdown links `[title](https://…)` per item; items separated by a blank line. Empty title falls back to URL only.
+- **HTML:** Plain title text, then one anchor per item: `PR #123` or `Issue #42` (not the full title as the link). Multiple items separated by `<br>`.
+- **Plain text:** `Full title [PR #n](url)` or `[Issue #n](url)` when title is empty. Items separated by a blank line. If the URL has no `/pull/` or `/issues/` id, falls back to `title url` or bare URL.
 
 See [docs/FUNCTIONALITY.md](docs/FUNCTIONALITY.md) for exact behavior and examples.
 

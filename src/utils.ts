@@ -14,6 +14,24 @@ export function isIssueOrPrUrl(href: string): boolean {
   return /\/issues\/\d+$/.test(href) || /\/pull\/\d+$/.test(href);
 }
 
+export type IssueOrPullRef = { kind: "issue" | "pull"; num: string };
+
+/** Numeric id and kind from a GitHub issue or pull URL (any path suffix allowed). */
+export function parseIssueOrPullRef(url: string): IssueOrPullRef | null {
+  const mPull = url.match(/\/pull\/(\d+)/);
+  if (mPull) return { kind: "pull", num: mPull[1] };
+  const mIssue = url.match(/\/issues\/(\d+)/);
+  if (mIssue) return { kind: "issue", num: mIssue[1] };
+  return null;
+}
+
+/** Human-readable link label: `PR #123` or `Issue #123`. */
+export function formatCopyLinkLabel(url: string): string | null {
+  const ref = parseIssueOrPullRef(url);
+  if (!ref) return null;
+  return ref.kind === "pull" ? `PR #${ref.num}` : `Issue #${ref.num}`;
+}
+
 /** Escape text for use inside an HTML attribute or text node. */
 export function escapeHtml(text: string): string {
   return text
@@ -28,23 +46,35 @@ function escapeMarkdownLinkText(title: string): string {
   return title.replace(/\\/g, "\\\\").replace(/\[/g, "\\[").replace(/\]/g, "\\]");
 }
 
-/** Plain clipboard line: markdown link so title stays one line and linkifies where supported. */
+/** Plain clipboard line: full title as normal text, then markdown link on PR #n / Issue #n only. */
 export function formatCopyPayload(title: string, url: string): string {
   const t = title.trim();
-  if (!t) return url;
-  return `[${escapeMarkdownLinkText(t)}](${url})`;
+  const linkLabel = formatCopyLinkLabel(url);
+  if (!linkLabel) {
+    if (!t) return url;
+    return `${t} ${url}`;
+  }
+  const mdLink = `[${escapeMarkdownLinkText(linkLabel)}](${url})`;
+  if (!t) return mdLink;
+  return `${t} ${mdLink}`;
 }
 
 export function formatCopyPayloadMultiple(items: Array<{ title: string; url: string }>): string {
   return items.map(({ title, url }) => formatCopyPayload(title, url)).join("\n\n");
 }
 
-/** Rich HTML for one clickable title (paste into Gmail, Docs, Notion, etc.). */
+/** Rich HTML: title as plain text, then one anchor `PR #n` / `Issue #n`. */
 export function formatCopyPayloadHtml(title: string, url: string): string {
   const t = title.trim();
-  const label = t ? escapeHtml(t) : escapeHtml(url);
+  const linkLabel = formatCopyLinkLabel(url);
   const href = escapeHtml(url);
-  return `<a href="${href}">${label}</a>`;
+  if (!linkLabel) {
+    if (!t) return `<a href="${href}">${href}</a>`;
+    return `${escapeHtml(t)} <a href="${href}">${href}</a>`;
+  }
+  const labelHtml = escapeHtml(linkLabel);
+  if (!t) return `<a href="${href}">${labelHtml}</a>`;
+  return `${escapeHtml(t)} <a href="${href}">${labelHtml}</a>`;
 }
 
 export function formatCopyPayloadMultipleHtml(
